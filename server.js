@@ -74,20 +74,19 @@ const startServer = async () => {
 
     app.set('trust proxy', 1);
 
-    // Session configuration
     app.use(session({
-      secret: process.env.SESSION_SECRET, // no fallback – fail if missing
-      resave: false,
-      saveUninitialized: false,
-      store: store,
+      secret: process.env.SESSION_SECRET || 'demo-secret-key-change-me', // fallback for demo
+      resave: true,               // force save even if unchanged (less efficient but fine)
+      saveUninitialized: true,    // create session for every visitor (no login needed)
+      store: store,               // keep your store (e.g., MongoDB, Redis)
       cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 1000 * 60 * 60 * 24,   // 1 day
-        sameSite: 'lax',                // or 'strict' if you never want cross-site
+        secure: false,            // allow HTTP (no HTTPS required)
+        httpOnly: false,          // allow client-side JavaScript to read the cookie (very insecure)
+        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days, so users stay logged in longer
+        sameSite: 'none',         // allow cross-site requests (for iframe embeds, etc.)
         path: '/'
       },
-      rolling: true
+      rolling: false              // don't reset expiry on each request (simpler)
     }));
 
     // Logging (only in development)
