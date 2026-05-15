@@ -72,8 +72,6 @@ const startServer = async () => {
       console.error('Session store error:', error);
     });
 
-    app.set('trust proxy', 1);
-
     app.use(session({
       secret: process.env.SESSION_SECRET || 'demo-secret-key-change-me', // fallback for demo
       resave: true,               // force save even if unchanged (less efficient but fine)
