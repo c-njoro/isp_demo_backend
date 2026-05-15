@@ -29,7 +29,7 @@ const startServer = async () => {
 
     // CORS
     app.use(cors({
-      origin: [process.env.BASE_URL, 'http://localhost:3000'],
+      origin: [process.env.BASE_URL,'https://isp-demo-frontend.vercel.app', 'http://localhost:3000'],
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
       allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
