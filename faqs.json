@@ -1,0 +1,505 @@
+[
+    {
+      "id": "inst_res_001",
+      "question": "I need internet installation at my home. What do you need from me?",
+      "answer": "First, tell us your city or area. Then we will share available packages. After you choose a package, we will confirm if your exact location is covered. Coverage confirmation comes last.",
+      "category": "installation_residential",
+      "keywords": ["home installation", "new connection", "coverage check", "packages"]
+    },
+    {
+      "id": "inst_res_nakuru_001",
+      "question": "What are the packages and rules for Nakuru city?",
+      "answer": "All areas in Nakuru are covered except Egerton. Njoro area is also considered Nakuru. Installation is free everywhere except Egerton. For Egerton, you pay 3,500 KES for installation + first month. Then you choose your monthly package. Nakuru packages: 12 Mbps @ 2,000, 20 Mbps @ 2,500, 30 Mbps @ 3,000, 40 Mbps @ 4,000 per month.",
+      "category": "installation_residential",
+      "keywords": ["nakuru", "egerton", "njoro", "free installation", "packages"]
+    },
+    {
+      "id": "inst_res_nakuru_packages",
+      "question": "What are the residential monthly packages in Nakuru?",
+      "answer": "12 Mbps – 2,000 KES, 20 Mbps – 2,500 KES, 30 Mbps – 3,000 KES, 40 Mbps – 4,000 KES per month.",
+      "category": "installation_residential",
+      "keywords": ["nakuru packages", "monthly price", "speed tiers"]
+    },
+    {
+      "id": "inst_res_other_cities_001",
+      "question": "Which other cities have the same packages as Nakuru?",
+      "answer": "Eldoret, Kitale, Emali, and Nairobi (but only Zimmerman, South B, and Roysambu areas in Nairobi) have the same packages: 12 Mbps @ 2,000, 20 Mbps @ 2,500, 30 Mbps @ 3,000, 40 Mbps @ 4,000 per month. Installation is free in these cities except where noted.",
+      "category": "installation_residential",
+      "keywords": ["eldoret", "kitale", "emali", "nairobi", "zimmerman", "south b", "roysambu", "same packages"]
+    },
+    {
+      "id": "inst_res_eldoret_coverage",
+      "question": "Is every area in Eldoret covered?",
+      "answer": "No, not all areas in Eldoret are covered. We will first share packages, then you must share your exact location for coverage confirmation.",
+      "category": "installation_residential",
+      "keywords": ["eldoret coverage", "location check", "not all areas"]
+    },
+    {
+      "id": "inst_res_kitale_coverage",
+      "question": "Is every area in Kitale covered?",
+      "answer": "No, not all areas in Kitale are covered. We will first share packages, then you must share your exact location for coverage confirmation.",
+      "category": "installation_residential",
+      "keywords": ["kitale coverage", "location check"]
+    },
+    {
+      "id": "inst_res_emali_coverage",
+      "question": "Is every area in Emali covered?",
+      "answer": "No, not all areas in Emali are covered. We will first share packages, then you must share your exact location for coverage confirmation.",
+      "category": "installation_residential",
+      "keywords": ["emali coverage", "location check"]
+    },
+    {
+      "id": "inst_res_nairobi_areas",
+      "question": "Which areas in Nairobi does Skylink cover?",
+      "answer": "We cover Zimmerman, South B, and Roysambu only. Installation is free. Packages are same as Nakuru: 12 Mbps @ 2,000, 20 Mbps @ 2,500, 30 Mbps @ 3,000, 40 Mbps @ 4,000 per month.",
+      "category": "installation_residential",
+      "keywords": ["nairobi", "zimmerman", "south b", "roysambu", "coverage"]
+    },
+    {
+      "id": "inst_res_muguga_001",
+      "question": "What are the packages for Muguga?",
+      "answer": "Muguga packages per month: 8 Mbps – 1,750 KES, 10 Mbps – 1,900 KES, 15 Mbps – 2,000 KES, 20 Mbps – 2,500 KES, 30 Mbps – 3,000 KES, 40 Mbps – 4,000 KES. Coverage confirmation comes last – not all areas covered.",
+      "category": "installation_residential",
+      "keywords": ["muguga", "packages", "coverage confirmation"]
+    },
+    {
+      "id": "inst_res_kapsabet_001",
+      "question": "What are the rules and packages for Kapsabet?",
+      "answer": "Not all areas in Kapsabet are covered – you must share your location for confirmation. Installation fee is 2,000 KES for every installation (pay package amount + 2,000 for first time). Packages per month: 10 Mbps – 2,000 KES, 15 Mbps – 2,500 KES, 20 Mbps – 3,000 KES, 30 Mbps – 4,000 KES.",
+      "category": "installation_residential",
+      "keywords": ["kapsabet", "installation fee", "2000", "packages"]
+    },
+    {
+      "id": "inst_biz_001",
+      "question": "What are the business fiber installation packages (BizLite)?",
+      "answer": "Business packages per month: 15 Mbps – 2,500 KES, 30 Mbps – 3,500 KES, 60 Mbps – 6,000 KES, 80 Mbps – 7,000 KES, 100 Mbps – 8,000 KES.",
+      "category": "installation_business",
+      "keywords": ["business", "bizlite", "fiber", "commercial"]
+    },
+    {
+      "id": "inst_wireless_001",
+      "question": "I need wireless/wifi installation (not fiber). What are the rates?",
+      "answer": "Wireless monthly rates: 5 Mbps – 2,500 KES, 8 Mbps – 3,000 KES, 10 Mbps – 3,500 KES, 12 Mbps – 4,000 KES, 15 Mbps – 5,000 KES. Installation fee is 13,000 – 15,000 KES one time.",
+      "category": "installation_wireless",
+      "keywords": ["wireless", "wifi installation", "no fiber", "wireless rates"]
+    },
+    {
+      "id": "sup_conn_001",
+      "question": "My connection is lost. I have no internet. What do I do?",
+      "answer": "First, tell us your location. Then check: 1) Are cables intact? 2) What lights are blinking on your ONU (router)? 3) Can you see your WiFi name on your phone/device?",
+      "category": "support_connection",
+      "keywords": ["no internet", "connection lost", "offline", "troubleshoot"]
+    },
+    {
+      "id": "sup_conn_los_red",
+      "question": "The LOS light is blinking red on my ONU. What does that mean?",
+      "answer": "It means there is a fault that needs a field technician. You must call the Skylink office to create a ticket. A technician will be sent to you.",
+      "category": "support_connection",
+      "keywords": ["los red", "blinking red", "los light", "technician needed"]
+    },
+    {
+      "id": "sup_conn_no_wifi_name",
+      "question": "I cannot see my WiFi name (SSID) on my device.",
+      "answer": "Your router has been reset. Call the Skylink office. A NOC assistant will help you reconfigure the router.",
+      "category": "support_connection",
+      "keywords": ["no ssid", "wifi name missing", "router reset", "cannot see wifi"]
+    },
+    {
+      "id": "sup_conn_both_lights",
+      "question": "Both PON and LOS lights are blinking at the same time on my router.",
+      "answer": "Your router is faulty. You need a replacement. Contact Skylink support.",
+      "category": "support_connection",
+      "keywords": ["pon and los blinking", "both lights", "faulty router", "replace"]
+    },
+    {
+      "id": "sup_payment_001",
+      "question": "I have paid for my subscription but my internet is not renewed. What should I do?",
+      "answer": "Let's check: Did you pay with your registered phone number or a different number? Did you pay the exact amount for your package?",
+      "category": "support_payment",
+      "keywords": ["paid but no internet", "renewal issue", "subscription not active"]
+    },
+    {
+      "id": "sup_payment_diff_number",
+      "question": "I paid with a different phone number (not registered).",
+      "answer": "Call the Skylink office for manual payment resolution.",
+      "category": "support_payment",
+      "keywords": ["different number", "unregistered payment", "manual resolution"]
+    },
+    {
+      "id": "sup_payment_lower_amount",
+      "question": "I paid a lower amount than my package price.",
+      "answer": "Call the office if you want to downgrade to a cheaper package. Otherwise, pay the remaining amount.",
+      "category": "support_payment",
+      "keywords": ["lower amount", "underpayment", "downgrade"]
+    },
+    {
+      "id": "sup_payment_correct_not_captured",
+      "question": "I paid the right amount with my registered number but still no internet.",
+      "answer": "The billing system may not have captured your payment. Call the office for manual resolution.",
+      "category": "support_payment",
+      "keywords": ["correct payment", "not captured", "billing error", "manual resolution"]
+    },
+    {
+      "id": "sup_slow_speeds_001",
+      "question": "My internet is slow. What should I check?",
+      "answer": "1) Router uptime – if uptime is too long (days/weeks), reboot the router. 2) Connected devices – too many devices may be connected. Remove any that don't belong to you. 3) If you cannot remove unknown devices, call the office and someone will help you remotely.",
+      "category": "support_speed",
+      "keywords": ["slow speeds", "slow internet", "low speed", "speed issues"]
+    },
+    {
+      "id": "sup_hotspot_001",
+      "question": "I am using hotspot, paid for a package, but cannot access internet.",
+      "answer": "Try accessing internet from the same device you used to pay. You cannot use a different device. If still not working, the package may not have been activated – call the office to help check.",
+      "category": "support_hotspot",
+      "keywords": ["hotspot", "paid but no access", "hotspot not working", "same device"]
+    }
+  ],
+
+
+
+
+  //installation flow
+  {
+    "flow_name": "residential_installation",
+    "description": "Guides a customer from requesting installation to confirming coverage and payment.",
+    "steps": [
+      {
+        "step_id": "ask_city",
+        "prompt": "Which city do you need internet installation in? We cover: Nakuru, Eldoret, Kitale, Emali, Nairobi (Zimmerman/South B/Roysambu), Muguga, Kapsabet.",
+        "expected_input": "city_name",
+        "valid_inputs": ["nakuru", "eldoret", "kitale", "emali", "nairobi", "muguga", "kapsabet"],
+        "next_step": {
+          "nakuru": "nakuru_packages",
+          "eldoret": "generic_packages_then_location",
+          "kitale": "generic_packages_then_location",
+          "emali": "generic_packages_then_location",
+          "nairobi": "nairobi_packages",
+          "muguga": "muguga_packages_then_location",
+          "kapsabet": "kapsabet_install_fee"
+        }
+      },
+      {
+        "step_id": "nakuru_packages",
+        "prompt": "Great. In Nakuru, installation is free except in Egerton. Packages (per month): 12Mbps @ 2,000, 20Mbps @ 2,500, 30Mbps @ 3,000, 40Mbps @ 4,000. Are you in Egerton? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "egerton_install_fee",
+          "no": "ask_package_nakuru"
+        }
+      },
+      {
+        "step_id": "egerton_install_fee",
+        "prompt": "For Egerton, first time you pay 3,500 KES (installation + first month). After that, choose a package each month. Which package do you want? (12,20,30,40 Mbps)",
+        "expected_input": "package_speed",
+        "next_step": "ask_location_nakuru"
+      },
+      {
+        "step_id": "ask_package_nakuru",
+        "prompt": "Which package do you want? 12Mbps (2,000), 20Mbps (2,500), 30Mbps (3,000), or 40Mbps (4,000)?",
+        "expected_input": "package_speed",
+        "next_step": "ask_location_nakuru"
+      },
+      {
+        "step_id": "ask_location_nakuru",
+        "prompt": "Please share your exact location (estate, street, or landmark) so we can confirm fiber coverage in your area.",
+        "expected_input": "location_text",
+        "next_step": "confirm_coverage_nakuru"
+      },
+      {
+        "step_id": "confirm_coverage_nakuru",
+        "prompt": "Thank you. We will check coverage for [location]. Most of Nakuru is covered. Do you want to proceed with installation? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "collect_customer_details",
+          "no": "end_installation"
+        }
+      },
+      {
+        "step_id": "generic_packages_then_location",
+        "prompt": "Our packages in [city] are the same as Nakuru: 12Mbps @ 2,000, 20Mbps @ 2,500, 30Mbps @ 3,000, 40Mbps @ 4,000 per month. Which package do you want?",
+        "expected_input": "package_speed",
+        "next_step": "ask_location_generic"
+      },
+      {
+        "step_id": "ask_location_generic",
+        "prompt": "Please share your exact location (estate, street, or landmark). Not all areas in [city] are covered, so we need to confirm availability.",
+        "expected_input": "location_text",
+        "next_step": "confirm_coverage_generic"
+      },
+      {
+        "step_id": "confirm_coverage_generic",
+        "prompt": "We will check coverage for [location]. If covered, installation is free. Do you want to proceed? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "collect_customer_details",
+          "no": "end_installation"
+        }
+      },
+      {
+        "step_id": "nairobi_packages",
+        "prompt": "We cover Zimmerman, South B, and Roysambu only. Packages (same as Nakuru): 12Mbps @ 2,000, 20Mbps @ 2,500, 30Mbps @ 3,000, 40Mbps @ 4,000. Which package do you want?",
+        "expected_input": "package_speed",
+        "next_step": "ask_location_nairobi"
+      },
+      {
+        "step_id": "ask_location_nairobi",
+        "prompt": "Please share your exact location (estate, street, landmark) to confirm you are in Zimmerman, South B, or Roysambu.",
+        "expected_input": "location_text",
+        "next_step": "confirm_coverage_nairobi"
+      },
+      {
+        "step_id": "confirm_coverage_nairobi",
+        "prompt": "We will check if [location] is in our Nairobi coverage zone. If yes, installation is free. Proceed? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "collect_customer_details",
+          "no": "end_installation"
+        }
+      },
+      {
+        "step_id": "muguga_packages_then_location",
+        "prompt": "Muguga packages (per month): 8Mbps @ 1,750, 10Mbps @ 1,900, 15Mbps @ 2,000, 20Mbps @ 2,500, 30Mbps @ 3,000, 40Mbps @ 4,000. Which package do you want?",
+        "expected_input": "package_speed",
+        "next_step": "ask_location_generic"
+      },
+      {
+        "step_id": "kapsabet_install_fee",
+        "prompt": "Kapsabet has an installation fee of 2,000 KES. Packages (per month): 10Mbps @ 2,000, 15Mbps @ 2,500, 20Mbps @ 3,000, 30Mbps @ 4,000. Which package do you want?",
+        "expected_input": "package_speed",
+        "next_step": "ask_location_generic"
+      },
+      {
+        "step_id": "collect_customer_details",
+        "prompt": "Great! To proceed, please send your: 1) Full name, 2) Phone number (registered with M-Pesa if possible), 3) National ID number. We will confirm total amount and send payment instructions.",
+        "expected_input": "customer_details",
+        "next_step": "end_installation_success"
+      },
+      {
+        "step_id": "end_installation_success",
+        "prompt": "Thank you [name]. We will contact you within 1 hour to confirm installation date. For urgent help, call 0700 123 456.",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "end_installation",
+        "prompt": "No problem. If you change your mind, just send 'I want installation' again. Is there anything else I can help with?",
+        "expected_input": null,
+        "next_step": null
+      }
+    ]
+  }
+
+
+
+  //support flow
+
+  {
+    "flow_name": "support_troubleshooting",
+    "description": "Helps customers with no internet, payment issues, slow speeds, hotspot problems.",
+    "steps": [
+      {
+        "step_id": "start_support",
+        "prompt": "I'm here to help. What issue are you facing? Reply with: no internet, payment not renewed, slow speeds, or hotspot not working.",
+        "expected_input": "issue_type",
+        "valid_inputs": ["no internet", "payment not renewed", "slow speeds", "hotspot not working"],
+        "next_step": {
+          "no internet": "no_internet_location",
+          "payment not renewed": "payment_check",
+          "slow speeds": "slow_speeds_check",
+          "hotspot not working": "hotspot_same_device"
+        }
+      },
+      {
+        "step_id": "no_internet_location",
+        "prompt": "Sorry to hear that. First, tell me your location (city/area).",
+        "expected_input": "location_text",
+        "next_step": "no_internet_check_lights"
+      },
+      {
+        "step_id": "no_internet_check_lights",
+        "prompt": "Please check your ONU/router (the box with lights). What lights are blinking? Options: LOS red, PON and LOS both blinking, or I cannot see my WiFi name.",
+        "expected_input": "light_status",
+        "valid_inputs": ["los red", "both blinking", "no wifi name"],
+        "next_step": {
+          "los red": "los_red_action",
+          "both blinking": "both_blinking_action",
+          "no wifi name": "no_wifi_name_action"
+        }
+      },
+      {
+        "step_id": "los_red_action",
+        "prompt": "LOS red means there's a fiber fault. You need a technician. Please call our office at 0700 123 456 to create a ticket. A technician will be sent to you. Do you want me to note your location for the team? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "log_technician_ticket",
+          "no": "end_support"
+        }
+      },
+      {
+        "step_id": "both_blinking_action",
+        "prompt": "Both PON and LOS blinking means your router is faulty. You need a replacement. Please call 0700 123 456 or visit our nearest shop. Would you like the shop address? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "send_shop_address",
+          "no": "end_support"
+        }
+      },
+      {
+        "step_id": "no_wifi_name_action",
+        "prompt": "Your router has been reset. You will need a NOC assistant to reconfigure it. Please call our office at 0700 123 456. Shall I ask someone to call you back? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "request_callback",
+          "no": "end_support"
+        }
+      },
+      {
+        "step_id": "payment_check",
+        "prompt": "Let me help with payment renewal. Did you pay using your registered phone number or a different number?",
+        "expected_input": "payment_number_type",
+        "valid_inputs": ["registered", "different"],
+        "next_step": {
+          "registered": "payment_check_amount",
+          "different": "payment_different_number"
+        }
+      },
+      {
+        "step_id": "payment_check_amount",
+        "prompt": "Did you pay the exact amount for your package? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "payment_not_captured",
+          "no": "payment_lower_amount"
+        }
+      },
+      {
+        "step_id": "payment_not_captured",
+        "prompt": "The billing system may not have captured your payment. Please call our office at 0700 123 456 for manual resolution. They will need your M-Pesa transaction ID. Do you have it? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "end_support_with_advice",
+          "no": "end_support_with_advice"
+        }
+      },
+      {
+        "step_id": "payment_lower_amount",
+        "prompt": "You paid less than your package price. If you want to downgrade to a cheaper package, call 0700 123 456. Otherwise, pay the remaining amount. Would you like our payment number? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "send_payment_number",
+          "no": "end_support"
+        }
+      },
+      {
+        "step_id": "payment_different_number",
+        "prompt": "You paid with a different number. Call our office at 0700 123 456 for manual payment resolution. They will link the payment to your account. Do you want me to note your registered number? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "log_registered_number",
+          "no": "end_support"
+        }
+      },
+      {
+        "step_id": "slow_speeds_check",
+        "prompt": "First, reboot your router (unplug for 10 seconds, plug back in). After reboot, are speeds still slow? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "slow_speeds_devices",
+          "no": "end_support_speed_fixed"
+        }
+      },
+      {
+        "step_id": "slow_speeds_devices",
+        "prompt": "Check how many devices are connected to your WiFi. If there are unknown devices, remove them. If you can't do that, call our office and someone will help you remotely. Would you like the office number? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "send_office_number",
+          "no": "end_support"
+        }
+      },
+      {
+        "step_id": "hotspot_same_device",
+        "prompt": "Try accessing the internet from the same device you used to pay for the hotspot package. Hotspot login is tied to that device. Does it work? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "end_support_hotspot_working",
+          "no": "hotspot_activation"
+        }
+      },
+      {
+        "step_id": "hotspot_activation",
+        "prompt": "Your package may not have been activated. Please call our office at 0700 123 456 to check activation. Do you want me to send you the activation menu code? (yes/no)",
+        "expected_input": "yes_no",
+        "next_step": {
+          "yes": "send_hotspot_code",
+          "no": "end_support"
+        }
+      },
+      {
+        "step_id": "log_technician_ticket",
+        "prompt": "Noted. I've logged your location for a technician. Expect a call within 24 hours. Any other issue?",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "send_shop_address",
+        "prompt": "Our main shop: Skylink Plaza, Moi Avenue, Nakuru. Open Mon-Sat 8am-6pm. Need anything else?",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "request_callback",
+        "prompt": "Please share your phone number and we'll have a NOC assistant call you within 1 hour.",
+        "expected_input": "phone_number",
+        "next_step": null
+      },
+      {
+        "step_id": "send_payment_number",
+        "prompt": "Pay via M-Pesa Paybill: 123456, Account: Your Skylink account number. Send 'BAL' to 12345 to check your account number.",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "send_office_number",
+        "prompt": "Office number: 0700 123 456 (24/7). They can remotely manage your connected devices. Need anything else?",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "send_hotspot_code",
+        "prompt": "Dial *544# to check hotspot status or buy a new package. If still not working, call support.",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "log_registered_number",
+        "prompt": "Please send your registered phone number. I will pass it to the billing team.",
+        "expected_input": "phone_number",
+        "next_step": null
+      },
+      {
+        "step_id": "end_support_speed_fixed",
+        "prompt": "Great! Speed should be normal now. If issue returns, try rebooting weekly. Anything else I can help with?",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "end_support_hotspot_working",
+        "prompt": "Perfect. Remember to always use the same device you paid with. Need anything else?",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "end_support_with_advice",
+        "prompt": "Call 0700 123 456 with your transaction ID. They will fix it quickly. Is there anything else?",
+        "expected_input": null,
+        "next_step": null
+      },
+      {
+        "step_id": "end_support",
+        "prompt": "Is there anything else I can help you with today?",
+        "expected_input": null,
+        "next_step": null
+      }
+    ]
+  }
