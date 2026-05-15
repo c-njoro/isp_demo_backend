@@ -1,12 +1,29 @@
 const User = require('../models/User');
 const Admin = require('../models/Admin');
 
+const isDemoMode = true;
+
 // Protect routes - check if user is authenticated
 exports.protect = async (req, res, next) => {
+  // DEMO MODE: skip all authentication, attach fake admin user
+  if (isDemoMode) {
+    req.user = {
+      _id: 'demo_user_id',
+      username: 'demo_admin',
+      isAdmin: true,
+      role: 'super_admin',
+      allowedRegions: [],
+      isActive: true
+    };
+    req.isAdmin = true;
+    req.selectedRegion = 'ALL';
+    req.allowedRegions = [];
+    console.log('Demo mode: authentication bypassed');
+    return next();
+  }
+
+  // Normal production authentication
   try {
-    // Debug logging
-   
-    
     // Check if session exists and has userId
     if (!req.session || !req.session.userId) {
       console.log('FAILED: No session or no userId');
@@ -56,8 +73,6 @@ exports.protect = async (req, res, next) => {
     req.selectedRegion = req.session.selectedRegion;
     req.allowedRegions = req.session.allowedRegions || user.allowedRegions;
     req.isAdmin = req.session.isAdmin || false;
-
-    
 
     next();
   } catch (error) {
@@ -127,19 +142,22 @@ exports.applyRegionFilter = (req, res, next) => {
 
 // Admin only - ensure user is an admin (from session)
 exports.adminOnly = (req, res, next) => {
-    if (!req.isAdmin) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Admin privileges required.',
-        data: null
-      });
-    }
-    next();
-  };
+  if (!req.isAdmin) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. Admin privileges required.',
+      data: null
+    });
+  }
+  next();
+};
 
 // Authorize specific roles
 exports.authorize = (...roles) => {
   return (req, res, next) => {
+    // Demo mode: skip role check
+    if (isDemoMode) return next();
+
     const userRole = req.isAdmin ? req.user.role : req.user.roleId?.roleCode;
     
     if (!roles.includes(userRole)) {
