@@ -12,8 +12,8 @@ async function createSuperAdmin() {
 
     console.log('✅ Connected to MongoDB');
 
-    const username = 'superadmin';
-    const password = 'admin123';
+    const username = 'charles';
+    const password = 'charles123';
 
     // Check if exists
     const existing = await Admin.findOne({ username });
@@ -29,11 +29,11 @@ async function createSuperAdmin() {
 
     const admin = new Admin({
       username,
-      email: 'admin@ispmanager.co.ke',
+      email: 'mwanikic314@gmail.com',
       password: hashedPassword,
       firstName: 'System',
       lastName: 'Administrator',
-      phoneNumber: '+254700000000',
+      phoneNumber: '+254720128694',
       allowedRegions: ['*'],
       role: 'super_admin',
       isActive: true,

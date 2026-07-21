@@ -1,0 +1,93 @@
+services:
+  # ── Demo Backend ──────────────────────────
+  - type: web
+    name: isp-demo-backend
+    runtime: docker
+    repo: https://github.com/c-njoro/isp_demo_backend
+    branch: main
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        fromDatabase:
+          name: isp-demo-mongodb
+          property: connectionString
+      - key: RADIUS_DB_HOST
+        fromService:
+          type: pserv
+          name: isp-demo-radius-db
+          property: host
+      - key: RADIUS_DB_PORT
+        value: 3306
+      - key: RADIUS_DB_USER
+        value: radius
+      - key: RADIUS_DB_PASSWORD
+        generateValue: true
+      - key: RADIUS_DB_NAME
+        value: radius
+      - key: RADIUS_SERVER_IP
+        fromService:
+          type: pserv
+          name: isp-demo-freeradius
+          property: host
+      - key: RADIUS_SECRET
+        value: demo-secret-change-me
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+
+  # ── FreeRADIUS (Private Service) ──────────
+  - type: pserv
+    name: isp-demo-freeradius
+    runtime: docker
+    repo: https://github.com/c-njoro/isp_demo_backend
+    branch: main
+    dockerfilePath: ./freeradius/Dockerfile
+    envVars:
+      - key: RADIUS_DB_HOST
+        fromService:
+          type: pserv
+          name: isp-demo-radius-db
+          property: host
+      - key: RADIUS_DB_PASSWORD
+        fromService:
+          type: web
+          name: isp-demo-backend
+          envVarKey: RADIUS_DB_PASSWORD
+    disk:
+      name: freeradius-config
+      mountPath: /etc/freeradius
+      sizeGB: 1
+
+  # ── MySQL for RADIUS (Private Service) ────
+  - type: pserv
+    name: isp-demo-radius-db
+    runtime: docker
+    repo: https://github.com/c-njoro/isp_demo_backend
+    branch: main
+    dockerfilePath: ./mysql/Dockerfile
+    envVars:
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true
+      - key: MYSQL_DATABASE
+        value: radius
+      - key: MYSQL_USER
+        value: radius
+      - key: MYSQL_PASSWORD
+        fromService:
+          type: web
+          name: isp-demo-backend
+          envVarKey: RADIUS_DB_PASSWORD
+    disk:
+      name: radius-db-data
+      mountPath: /var/lib/mysql
+      sizeGB: 5
+
+databases:
+  - name: isp-demo-mongodb
+    databaseName: isp_management
+    plan: starter

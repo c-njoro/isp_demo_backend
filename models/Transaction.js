@@ -6,7 +6,7 @@ const TransactionSchema = new Schema({
   type: {
     type: String,
     required: true,
-    enum: ['MPESA', 'SUBSCRIPTION', 'REFUND', 'ADJUSTMENT', 'PENALTY', 'WALLET', 'PARENT-TO-CHILD', 'CASH_DEPOSIT', 'EXPENSE'],
+    enum: ['MPESA', 'SUBSCRIPTION', 'REFUND', 'ADJUSTMENT', 'PENALTY', 'WALLET', 'PARENT-TO-CHILD', 'CASH_DEPOSIT', 'EXPENSE', 'MOVED_PAYMENT', 'PLAN_CHANGE', 'PRORATED_MOVE'],
     // MPESA = money coming in (credit)
     // SUBSCRIPTION = money allocated to subscription (debit)
     // REFUND = money going back
@@ -63,7 +63,7 @@ const TransactionSchema = new Schema({
   // Payment Method Details
   paymentMethod: {
     type: String,
-    enum: ['stk_push', 'till', 'paybill', 'cash', 'bank_transfer', 'adjustment', 'transfer', 'mpesa', 'airtel', 'card', 'bank', 'cash'],
+    enum: ['stk_push', 'till', 'paybill', 'cash', 'bank_transfer', 'adjustment', 'transfer', 'mpesa', 'airtel', 'card', 'bank', 'cash', 'wallet'],
     required: true
   },
   

@@ -46,6 +46,50 @@ function generatePPPoEPassword() {
 }
 
 /**
+ * Activate all children that share expiry with the given parent.
+ * Sets their status to active, updates expiry to parent's new expiry,
+ * and enables RADIUS with their own package group.
+ * @param {Object} parent - Parent customer document
+ * @param {Date} newExpiry - The new expiry date (usually parent's expiry)
+ */
+async function activateSharedExpiryChildren(parent, newExpiry) {
+  if (!parent.sharedExpiry || parent.sharedExpiry.length === 0) return;
+
+  const radiusService = require("../services/radiusService");
+  const children = await Customer.find({ _id: { $in: parent.sharedExpiry } }).populate('subscription.packageId');
+
+  for (const child of children) {
+    // Update expiry and status
+    child.subscription.expiresAt = newExpiry;
+    child.subscription.status = 'active';
+    if (!child.subscription.activatedAt) child.subscription.activatedAt = new Date();
+    await child.save();
+
+    // Enable RADIUS with the child's own package group
+    const packageDoc = child.subscription.packageId;
+    if (packageDoc) {
+      const groupName = packageDoc.packageName.replace(/\s+/g, '_').toUpperCase();
+      await radiusService.enableAccount(child.pppoe.username, groupName);
+      await radiusService.setBillingCycleStart(child.pppoe.username, new Date());
+    }
+
+    // System log for child activation
+    await SystemLog.create({
+      eventType: "expiry_propagation",
+      severity: "info",
+      regionCode: child.regionCode,
+      entityType: "customer",
+      entityId: child._id,
+      accountId: child.accountId,
+      message: `Child account activated due to parent ${parent.accountId} renewal/activation`,
+      details: { parentId: parent._id, newExpiry },
+      triggeredBy: "system",
+      success: true,
+    });
+  }
+}
+
+/**
  * Generate WiFi password
  * Format: 8 characters alphanumeric (easier to type)
  */
@@ -82,5 +126,6 @@ module.exports = {
   generatePPPoEPassword,
   generateWiFiPassword,
   isValidMacAddress,
-  normalizeMacAddress
+  normalizeMacAddress,
+  activateSharedExpiryChildren
 };

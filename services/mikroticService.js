@@ -1441,9 +1441,18 @@ async getInterfaces(site) {
     const interfaces = await this._executeCommand(api, '/interface/print');
     await api.close();
 
+    const parsed = this._parseApiResponse(interfaces);
+
+    // Exclude pppoe-in interfaces only — these are dynamically created by
+    // RouterOS per active customer PPPoE session (e.g. <pppoe-SKY0133>) and
+    // destroyed on disconnect. All OTHER dynamic interfaces (bridges,
+    // wireless, VPN tunnels, etc.) are kept; this filters by type, not by
+    // the `dynamic` flag, so it only removes PPPoE customer sessions.
+    const filtered = parsed.filter(iface => iface.type !== 'pppoe-in');
+
     return {
       success: true,
-      data: this._parseApiResponse(interfaces)
+      data: filtered
     };
   } catch (error) {
     if (api) {
@@ -1480,7 +1489,609 @@ async getEthernetInterfaces(site) {
     };
   }
 }
+
+
+  // ============================================
+  // HOTSPOT METHODS
+  // ============================================
+
+  /**
+   * Add or update a hotspot user in MikroTik
+   * This is the KEY method - it creates the user that allows internet access
+   */
+  async addHotspotUser(site, userData) {
+    console.log(`\n=== Adding Hotspot User via API: ${userData.name} ===`);
+    let api = null;
+    try {
+      api = await this._getConnection(site);
+
+      // Check if user already exists
+      const existing = await this._executeCommand(api, '/ip/hotspot/user/print', {
+        '?name': userData.name
+      });
+
+      const profile = userData.profile || 'default';
+      const limitUptime = userData.limitUptime || '1d'; // Format: 1d, 12h, 30m
+      const macAddress = userData.macAddress || '';
+
+      if (existing && existing.length > 0) {
+        console.log('⚠️ Hotspot user exists, updating...');
+        
+        // Update existing user
+        const params = {
+          '.id': existing[0]['.id'],
+          'profile': profile,
+          'limit-uptime': limitUptime,
+          'disabled': 'no',
+          'comment': userData.comment || `Hotspot user ${userData.name}`
+        };
+        
+        if (macAddress) {
+          params['mac-address'] = macAddress;
+        }
+        if (userData.password) {
+          params['password'] = userData.password;
+        }
+
+        await this._executeCommand(api, '/ip/hotspot/user/set', params);
+        
+        await api.close();
+        console.log('✅ Hotspot user updated');
+        return { success: true, action: 'updated', name: userData.name };
+      }
+
+      // Add new hotspot user
+      const params = {
+        name: userData.name,
+        profile: profile,
+        'limit-uptime': limitUptime,
+        'disabled': 'no',
+        comment: userData.comment || `Hotspot user ${userData.name}`
+      };
+
+      if (macAddress) {
+        params['mac-address'] = macAddress;
+      }
+      if (userData.password) {
+        params['password'] = userData.password;
+      }
+
+      await this._executeCommand(api, '/ip/hotspot/user/add', params);
+
+      await api.close();
+      console.log('✅ Hotspot user added successfully');
+      return { success: true, action: 'created', name: userData.name };
+
+    } catch (error) {
+      if (api) {
+        try { await api.close(); } catch (e) { /* ignore */ }
+      }
+      console.error('❌ Failed to add hotspot user:', error);
+      throw new Error(`Failed to add hotspot user: ${error.message}`);
+    }
+  }
+
+  /**
+   * Remove a hotspot user from MikroTik
+   */
+  async removeHotspotUser(site, username) {
+    console.log(`\n=== Removing Hotspot User via API: ${username} ===`);
+    let api = null;
+    try {
+      api = await this._getConnection(site);
+
+      const existing = await this._executeCommand(api, '/ip/hotspot/user/print', {
+        '?name': username
+      });
+
+      if (!existing || existing.length === 0) {
+        console.log('ℹ️ Hotspot user not found');
+        return { success: true, message: 'User not found' };
+      }
+
+      // Remove active session first
+      try {
+        const active = await this._executeCommand(api, '/ip/hotspot/active/print', {
+          '?user': username
+        });
+        if (active && active.length > 0) {
+          await this._executeCommand(api, '/ip/hotspot/active/remove', {
+            '.id': active[0]['.id']
+          });
+          console.log('✅ Active hotspot session removed');
+        }
+      } catch (err) {
+        console.log('ℹ️ No active session to remove');
+      }
+
+      // Remove the user
+      await this._executeCommand(api, '/ip/hotspot/user/remove', {
+        '.id': existing[0]['.id']
+      });
+
+      await api.close();
+      console.log('✅ Hotspot user removed');
+      return { success: true, message: 'User removed' };
+
+    } catch (error) {
+      if (api) {
+        try { await api.close(); } catch (e) { /* ignore */ }
+      }
+      console.error('❌ Failed to remove hotspot user:', error);
+      throw new Error(`Failed to remove hotspot user: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get hotspot user info
+   */
+  async getHotspotUser(site, username) {
+    let api = null;
+    try {
+      api = await this._getConnection(site);
+      const users = await this._executeCommand(api, '/ip/hotspot/user/print', {
+        '?name': username
+      });
+      await api.close();
+
+      if (!users || users.length === 0) {
+        return { success: true, exists: false };
+      }
+
+      return {
+        success: true,
+        exists: true,
+        data: this._parseApiResponse(users)[0]
+      };
+    } catch (error) {
+      if (api) {
+        try { await api.close(); } catch (e) { /* ignore */ }
+      }
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get all hotspot active sessions
+   */
+  async getHotspotActiveSessions(site) {
+    let api = null;
+    try {
+      api = await this._getConnection(site);
+      const active = await this._executeCommand(api, '/ip/hotspot/active/print');
+      await api.close();
+
+      return {
+        success: true,
+        sessions: this._parseApiResponse(active)
+      };
+    } catch (error) {
+      if (api) {
+        try { await api.close(); } catch (e) { /* ignore */ }
+      }
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Disconnect a specific hotspot active session by MAC
+   */
+  async disconnectHotspotByMac(site, macAddress) {
+    console.log(`\n=== Disconnecting Hotspot Session by MAC: ${macAddress} ===`);
+    let api = null;
+    try {
+      api = await this._getConnection(site);
+
+      const active = await this._executeCommand(api, '/ip/hotspot/active/print', {
+        '?mac-address': macAddress.toUpperCase()
+      });
+
+      if (!active || active.length === 0) {
+        console.log('ℹ️ No active session for this MAC');
+        await api.close();
+        return { success: true, wasConnected: false };
+      }
+
+      await this._executeCommand(api, '/ip/hotspot/active/remove', {
+        '.id': active[0]['.id']
+      });
+
+      await api.close();
+      console.log('✅ Hotspot session disconnected');
+      return { success: true, wasConnected: true };
+
+    } catch (error) {
+      if (api) {
+        try { await api.close(); } catch (e) { /* ignore */ }
+      }
+      console.error('❌ Failed to disconnect hotspot:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Add walled garden entry for payment portal
+   */
+  async addWalledGarden(site, host) {
+    let api = null;
+    try {
+      api = await this._getConnection(site);
+
+      // Check if already exists
+      const existing = await this._executeCommand(api, '/ip/hotspot/walled-garden/ip/print', {
+        '?dst-host': host
+      });
+
+      if (existing && existing.length > 0) {
+        await api.close();
+        return { success: true, message: 'Already exists' };
+      }
+
+      await this._executeCommand(api, '/ip/hotspot/walled-garden/ip/add', {
+        'dst-host': host,
+        action: 'accept'
+      });
+
+      await api.close();
+      return { success: true, message: 'Walled garden entry added' };
+
+    } catch (error) {
+      if (api) {
+        try { await api.close(); } catch (e) { /* ignore */ }
+      }
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Create hotspot user profile (speed limit)
+   */
+  async createHotspotProfile(site, profileName, rateLimit) {
+    console.log(`\n=== Creating Hotspot Profile: ${profileName} (${rateLimit}) ===`);
+    let api = null;
+    try {
+      api = await this._getConnection(site);
+
+      // Check if exists
+      const existing = await this._executeCommand(api, '/ip/hotspot/user/profile/print', {
+        '?name': profileName
+      });
+
+      if (existing && existing.length > 0) {
+        // Update existing
+        await this._executeCommand(api, '/ip/hotspot/user/profile/set', {
+          '.id': existing[0]['.id'],
+          'rate-limit': rateLimit,
+          'shared-users': '1'
+        });
+        console.log('✅ Profile updated');
+      } else {
+        // Create new
+        await this._executeCommand(api, '/ip/hotspot/user/profile/add', {
+          name: profileName,
+          'rate-limit': rateLimit,
+          'shared-users': '1',
+          'idle-timeout': '5m'
+        });
+        console.log('✅ Profile created');
+      }
+
+      await api.close();
+      return { success: true, profileName, rateLimit };
+
+    } catch (error) {
+      if (api) {
+        try { await api.close(); } catch (e) { /* ignore */ }
+      }
+      console.error('❌ Failed to create profile:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Force re-authentication of a hotspot user by MAC address
+   * Removes them from ALLOWED_USERS address list, active sessions, and host table
+   * MikroTik will re-auth them on next request → RADIUS decides access level
+   */
+/**
+ * Force a hotspot user to re-authenticate by removing their active session.
+ * The user will be disconnected and must log in again; RADIUS will then apply the correct access list.
+ */
+async kickHotspotUser(site, macAddress) {
+  console.log(`\n=== Kicking Hotspot User (remove active session): ${macAddress} ===`);
+  let api = null;
+  try {
+    api = await this._getConnection(site);
+
+    const raw = macAddress.replace(/[^A-Fa-f0-9]/g, '').toUpperCase();
+    if (raw.length !== 12) {
+      return { success: false, error: `Invalid MAC address: ${macAddress}` };
+    }
+    const mac = raw.match(/.{2}/g).join(':');
+    console.log(`   MAC (normalized): ${mac}`);
+
+    // Find active hotspot session by MAC
+    const activeSessions = await api.write('/ip/hotspot/active/print', [
+      `?mac-address=${mac}`
+    ]);
+
+    if (!activeSessions || activeSessions.length === 0) {
+      console.log(`   ℹ️ No active hotspot session found for ${mac}`);
+      await api.close();
+      return { success: true, message: 'No active session to remove', wasConnected: false };
+    }
+
+    const session = activeSessions[0];
+    const sessionId = session['.id'];
+
+    if (!sessionId) {
+      console.error(`   ❌ No session ID found in object:`, session);
+      await api.close();
+      return { success: false, error: 'Cannot extract session ID' };
+    }
+
+    console.log(`   Found session ID: ${sessionId}`);
+
+    // Remove using array format (consistent with existing patterns)
+    await api.write('/ip/hotspot/active/remove', [
+      `=.id=${sessionId}`
+    ]);
+
+    await api.close();
+    console.log(`   ✅ Active hotspot session removed for ${mac}`);
+    return { success: true, wasConnected: true, mac };
+
+  } catch (error) {
+    if (api) {
+      try { await api.close(); } catch (e) { /* ignore */ }
+    }
+    console.error(`❌ Failed to kick hotspot user ${macAddress}:`, error.message);
+    return { success: false, error: error.message };
+  }
 }
+
+
+/**
+ * Force re-authentication of a client by IP address.
+ *
+ * Flow:
+ *   1. Search /ip/hotspot/host by address.
+ *      - If found, remove all matching host entries.
+ *   2. Otherwise search /ppp/active by address.
+ *      - If found, remove the active PPP session.
+ *   3. Otherwise return "not found".
+ */
+async forceReauthentication(site, ipAddress) {
+  console.log(`\n=== Force Reauthentication: ${ipAddress} ===`);
+
+  let api = null;
+
+  try {
+    api = await this._getConnection(site);
+
+    //
+    // STEP 1: Try Hotspot Host
+    //
+    const hosts = await api.write('/ip/hotspot/host/print', [
+      `?address=${ipAddress}`
+    ]);
+
+    if (hosts && hosts.length > 0) {
+      console.log(`   Found ${hosts.length} hotspot host(s)`);
+
+      let removed = 0;
+
+      for (const host of hosts) {
+        if (!host['.id']) continue;
+
+        await api.write('/ip/hotspot/host/remove', [
+          `=.id=${host['.id']}`
+        ]);
+
+        removed++;
+      }
+
+      await api.close();
+
+      console.log(`   ✅ Removed ${removed} hotspot host(s)`);
+
+      return {
+        success: true,
+        type: 'hotspot',
+        ip: ipAddress,
+        removed
+      };
+    }
+
+    //
+    // STEP 2: Try PPP Active
+    //
+    const sessions = await api.write('/ppp/active/print', [
+      `?address=${ipAddress}`
+    ]);
+
+    if (sessions && sessions.length > 0) {
+      const session = sessions[0];
+
+      if (!session['.id']) {
+        await api.close();
+
+        return {
+          success: false,
+          error: 'PPP session has no .id'
+        };
+      }
+
+      console.log(`   Found PPP session ${session['.id']}`);
+
+      await api.write('/ppp/active/remove', [
+        `=.id=${session['.id']}`
+      ]);
+
+      await api.close();
+
+      console.log(`   ✅ PPP session terminated`);
+
+      return {
+        success: true,
+        type: 'pppoe',
+        ip: ipAddress
+      };
+    }
+
+    //
+    // STEP 3: Nothing found
+    //
+    await api.close();
+
+    console.log(`   ℹ️ No hotspot host or PPP session found for ${ipAddress}`);
+
+    return {
+      success: false,
+      error: 'Connection not found',
+      ip: ipAddress
+    };
+
+  } catch (error) {
+    if (api) {
+      try {
+        await api.close();
+      } catch (_) {}
+    }
+
+    console.error(`❌ Failed to force reauthentication for ${ipAddress}:`, error.message);
+
+    return {
+      success: false,
+      error: error.message,
+      ip: ipAddress
+    };
+  }
+}
+
+ 
+  // ----------------------------------------------------------------------
+  // NMS / TOPOLOGY METHODS
+  // ----------------------------------------------------------------------
+ 
+  /**
+   * Get LLDP/MNDP neighbor table — who is plugged into which local port,
+   * and what the device on the other end calls itself.
+   *
+   * Used by the topology service to figure out which port of this router
+   * connects to which port of another router/device in our system.
+   *
+   * Real-world notes:
+   * - `identity` is the field we match against Router.name / Device.name to
+   *   resolve a neighbor row into an actual device in our database. If it's
+   *   missing, that neighbor row is unusable for matching and is skipped.
+   * - `interface-name` (the port name as reported BY the neighbor) is best
+   *   effort — not every device populates it, so it can be null.
+   * - A single local interface can have more than one neighbor row if it's
+   *   connected through an unmanaged switch with LLDP passthrough. That's a
+   *   real topology, not a bug — we don't collapse duplicates here.
+   */
+  async getNeighbors(site) {
+    let api = null;
+    try {
+      api = await this._getConnection(site);
+      const neighbors = await this._executeCommand(api, '/ip/neighbor/print');
+      await api.close();
+ 
+      const parsed = this._parseApiResponse(neighbors);
+ 
+      const data = parsed
+        .filter(n => n.interface && n.identity)
+        .map(n => ({
+          localInterface: n.interface,
+          remoteIdentity: n.identity,
+          remoteInterfaceName: n['interface-name'] || null,
+          remoteMac: n['mac-address'] || null,
+          remoteAddress: n.address || null,
+          remotePlatform: n.platform || null,
+          remoteBoard: n.board || null,
+          remoteVersion: n.version || null
+        }));
+ 
+      return { success: true, data };
+    } catch (error) {
+      if (api) {
+        try { await api.close(); } catch (e) { /* ignore */ }
+      }
+      console.error('Failed to get neighbors:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+ 
+  /**
+   * Get per-interface byte counters plus the real negotiated link speed,
+   * for bandwidth history graphs.
+   *
+   * This returns a raw CUMULATIVE snapshot (rx-byte / tx-byte since last
+   * reset, e.g. reboot) — it does NOT compute a rate. The caller (the stats
+   * poller) is responsible for diffing this against the previous poll to
+   * get bits-per-second, and for handling counter resets (if current bytes
+   * are lower than the last stored value, the router rebooted — treat the
+   * delta as the current value, not a negative number).
+   *
+   * Reuses getInterfaces() and getEthernetInterfaces() rather than issuing
+   * fresh /interface/print or /interface/ethernet/print calls, so this
+   * stays consistent with the rest of the service if those methods change.
+   *
+   * ifSpeed caveats (real, not theoretical):
+   * - Only ethernet-type ports show up in getEthernetInterfaces() — bridges,
+   *   VLANs, and pppoe-server interfaces won't have a speed value here, and
+   *   that's expected, not a failure.
+   * - `speed` is only populated once a link has actually negotiated. A down
+   *   or disabled port reporting null speed usually just means it was
+   *   checked while down, not that data is missing.
+   */
+ async getInterfaceCounters(site) {
+    try {
+      const [ifacesResult, ethernetResult] = await Promise.all([
+        this.getInterfaces(site),
+        this.getEthernetInterfaces(site)
+      ]);
+ 
+      if (!ifacesResult.success) {
+        return { success: false, error: ifacesResult.error };
+      }
+ 
+      const speedByName = new Map();
+      if (ethernetResult.success) {
+        for (const row of ethernetResult.data) {
+          if (row.name && row.speed) {
+            speedByName.set(row.name, row.speed);
+          }
+        }
+      }
+ 
+      const data = ifacesResult.data
+        .filter(row => row.name)
+        .map(row => ({
+          iface: row.name,
+          macAddress: row['mac-address'] || null,
+          rxByte: parseInt(row['rx-byte'] || 0, 10),
+          txByte: parseInt(row['tx-byte'] || 0, 10),
+          ifSpeed: speedByName.get(row.name) || null,
+          running: row.running === 'true' || row.running === true,
+          disabled: row.disabled === 'true' || row.disabled === true,
+          type: row.type || 'unknown'
+        }));
+ 
+      return { success: true, data };
+    } catch (error) {
+      console.error('Failed to get interface counters:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+ 
+
+
+
+}
+
+
 
 // Export singleton instance
 module.exports = new MikrotikAPIService();

@@ -1,0 +1,10 @@
+sqlcounter monthly_traffic {
+    sql_module_instance = sql
+    counter_name = Monthly-Traffic
+    check_name = Max-Monthly-Traffic
+    key = User-Name
+    reset = monthly
+    reset_day = 1
+    
+    query = "SELECT SUM(acctinputoctets + acctoutputoctets) FROM radacct WHERE username = '%{User-Name}' AND acctstarttime >= DATE_FORMAT(NOW() ,'%Y-%m-01')"
+}

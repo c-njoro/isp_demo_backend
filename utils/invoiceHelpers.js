@@ -41,28 +41,30 @@ const calculatePeriodEnd = (startDate, period, periodUnit) => {
   const endDate = new Date(startDate);
 
   switch (periodUnit) {
-    case 'm':
+    case 'm': // minutes
       endDate.setMinutes(endDate.getMinutes() + period);
       break;
-    case 'h':
+    case 'h': // hours
       endDate.setHours(endDate.getHours() + period);
       break;
-    case 'd':
+    case 'd': // days
       if (period >= 30) {
         // Monthly billing – advance by one calendar month
         endDate.setMonth(endDate.getMonth() + 1);
       } else {
-        // Short‑day periods (e.g., 7‑day trial) – add literal days
+        // Short periods (e.g., 7‑day trial) – add exact days
         endDate.setDate(endDate.getDate() + period);
       }
       break;
     default:
-      // Fallback for any other unit (e.g., minutes)
-      endDate.setMinutes(endDate.getMinutes() + period);
+      // Fallback: treat as days
+      endDate.setDate(endDate.getDate() + period);
   }
 
   return endDate;
 };
+
+
 
 /**
  * Format currency to KSH

@@ -13,7 +13,8 @@ const {
   getUnconfiguredOnus,       // new
   getOnuDetails,             // new
   findAvailablePort,         // was getAvailablePorts
-  testCredentials            // was testOltCredentials
+  testCredentials,            // was testOltCredentials
+  authorizeOnuSkylink
 } = require('../controllers/oltController');
 const { protect, applyRegionFilter, adminOnly } = require('../middleware/auth');
 
@@ -45,6 +46,7 @@ router.get('/:id/onus/:ponPort/:onuId', getOnuDetails);          // detailed ONU
 router.get('/:id/available-port', findAvailablePort);            // find best port for new ONU
 
 // Credentials test (for onboarding)
+router.post('/:id/authorize-skylink', adminOnly, authorizeOnuSkylink);
 router.post('/test-credentials', adminOnly, testCredentials);
 
 

@@ -25,9 +25,10 @@ exports.getOlts = asyncHandler(async (req, res, next) => {
   if (status) query.status = status;
   if (brand) query.brand = brand.toLowerCase();
   if (isActive) query.isActive = isActive === 'true';
-
+console.log("Did")
   const olts = await OLT.find(query)
-    .populate('siteId', 'siteName regionCode location')
+    .populate('siteId', 'name regionCode location')
+    .populate('routerId', 'name ip tunnelIp vpnConnected')
     .select('-password')
     .sort({ name: 1 });
 
@@ -48,7 +49,8 @@ exports.getOlts = asyncHandler(async (req, res, next) => {
  */
 exports.getOlt = asyncHandler(async (req, res, next) => {
   const olt = await OLT.findById(req.params.id)
-    .populate('siteId', 'siteName regionCode location router')
+    .populate('siteId', 'name regionCode location')
+    .populate('routerId', 'name ip tunnelIp vpnConnected vpnLastSeen')
     .select('-password');
 
   if (!olt) {
@@ -94,32 +96,19 @@ exports.getOlt = asyncHandler(async (req, res, next) => {
  * @access  Private (admin only)
  */
 exports.createOlt = asyncHandler(async (req, res, next) => {
-  const {
-    name,
-    description,
-    siteId,
-    regionCode,
-    ip,
-    port,
-    username,
-    password,
-    brand,
-    model,
-    serialNumber,
-    firmwareVersion,
-    ponPorts,
-    maxOnusPerPort,
-    location,
-    contactPerson,
-    vlanRange,
-    managementVlan,
-    monitoring
-  } = req.body;
+  // MINIMAL INPUT ONLY. Everything technical (model, firmwareVersion,
+  // ponPorts, chassis stats) is deliberately NOT accepted from the
+  // request body here — those are discovered by testing the connection
+  // right after creation, not typed in by whoever is filling the form.
+  // regionCode is also not accepted directly; it's derived from the
+  // selected Site, since asking someone to retype a code that already
+  // exists on the Site record is an unnecessary and error-prone field.
+  const { name, description, siteId, routerId, ip, port, username, password, brand } = req.body;
 
-  // Validate required fields
-  if (!name || !siteId || !regionCode || !ip || !username || !password || !brand) {
+  // Validate required fields — this is the FULL required set, intentionally short.
+  if (!name || !siteId || !routerId || !ip || !username || !password || !brand) {
     return next(new ErrorResponse(
-      'Please provide all required fields: name, siteId, regionCode, ip, username, password, brand', 
+      'Please provide all required fields: name, siteId, routerId, ip, username, password, brand',
       400
     ));
   }
@@ -132,14 +121,28 @@ exports.createOlt = asyncHandler(async (req, res, next) => {
     ));
   }
 
-  // Check if site exists
+  // Check if site exists — regionCode is derived from here, not user input.
   const site = await Site.findById(siteId);
   if (!site) {
     return next(new ErrorResponse(getResourceNotFoundMessage('Site'), 404));
   }
 
-  // Check region access
-  if (req.regionFilter.regionCode && site.regionCode !== regionCode.toUpperCase()) {
+  // Check if router exists and actually belongs to this site
+  const Router = require('../models/Router');
+  const router = await Router.findById(routerId);
+  if (!router) {
+    return next(new ErrorResponse(getResourceNotFoundMessage('Router'), 404));
+  }
+  if (router.site.toString() !== site._id.toString()) {
+    return next(new ErrorResponse(
+      'Selected router does not belong to the selected site',
+      400
+    ));
+  }
+
+  // Check region access — using the site's own regionCode, since the
+  // user never supplies one directly anymore.
+  if (req.regionFilter.regionCode && site.regionCode !== req.regionFilter.regionCode) {
     return next(new ErrorResponse('Access denied: OLT region does not match your access', 403));
   }
 
@@ -149,45 +152,31 @@ exports.createOlt = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse(`OLT with IP ${ip} already exists`, 400));
   }
 
-  // Check if serial number already exists (if provided)
-  if (serialNumber) {
-    const existingSerial = await OLT.findOne({ serialNumber });
-    if (existingSerial) {
-      return next(new ErrorResponse(`OLT with serial number ${serialNumber} already exists`, 400));
-    }
+  // Set default port based on brand, only if not explicitly provided.
+  // Most users won't supply a port at all — this just picks a sane
+  // default per vendor (22 for Huawei/SSH-style, 23 for ZTE/Telnet-style)
+  // rather than asking the form to explain port numbers to anyone.
+  let defaultPort = port;
+  if (!defaultPort) {
+    defaultPort = brand.toLowerCase() === 'zte' ? 23 : 23; // both telnet-only on this fleet today — see oltService notes
   }
 
-  // Set default port based on brand
-  let defaultPort = port || 22;
-  if (brand.toLowerCase() === 'zte' && !port) {
-    defaultPort = 23; // ZTE often uses Telnet
-  }
-
-  // Create OLT
+  // Create OLT with ONLY what's known right now. model, serialNumber,
+  // firmwareVersion, ponPorts, etc. are left at schema defaults — they
+  // get filled in below once the connection test runs, not guessed here.
   const olt = await OLT.create({
     name,
     description,
     siteId,
-    regionCode: regionCode.toUpperCase(),
+    routerId,
+    regionCode: site.regionCode,
     ip,
     port: defaultPort,
     username,
     password,
     brand: brand.toLowerCase(),
-    model,
-    serialNumber,
-    firmwareVersion,
-    ponPorts: ponPorts || 16,
-    maxOnusPerPort: maxOnusPerPort || 128,
-    location,
-    contactPerson,
-    vlanRange,
-    managementVlan,
-    monitoring: monitoring || {
-      enabled: true,
-      interval: 300,
-      alertOnOffline: true
-    },
+    apiType: 'telnet',
+    status: 'unknown',
     createdBy: req.session.userId,
     installedAt: new Date(),
     installedBy: req.session.userId
@@ -200,17 +189,29 @@ exports.createOlt = asyncHandler(async (req, res, next) => {
     regionCode: olt.regionCode,
     entityType: 'olt',
     entityId: olt._id,
-    message: `OLT ${olt.name} created at site ${site.siteName}`,
+    message: `OLT ${olt.name} created at site ${site.name}`,
     details: {
       oltId: olt._id,
       oltName: olt.name,
       brand: olt.brand,
       siteId: site._id,
-      siteName: site.siteName,
+      siteName: site.name,
+      routerId: router._id,
+      routerName: router.name,
       ip: olt.ip
     },
     triggeredBy: req.session.userId,
     success: true
+  });
+
+  // Immediately attempt a connection test, in the background relative to
+  // the response — we don't make the admin wait on this and we don't
+  // block creation if the OLT happens to be unreachable right now (e.g.
+  // network/route not finished being set up yet — see onboarding guide).
+  // Result gets persisted onto the OLT record either way, so the detail
+  // page can show real status without the user re-triggering anything.
+  testAndSyncOlt(olt._id).catch((err) => {
+    console.error(`Background connection test failed for OLT ${olt._id}:`, err.message);
   });
 
   // Don't send password in response
@@ -218,10 +219,45 @@ exports.createOlt = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: 'OLT created successfully',
+    message: 'OLT created. Testing connection in the background — check the OLT detail page for live status.',
     data: olt
   });
 });
+
+/**
+ * Shared helper: test connectivity to an OLT and backfill whatever
+ * structured fields the test reveals (currently: status, lastOnline,
+ * lastChecked, and the raw firmware/version string). Called automatically
+ * right after creation, and also available as a standalone "refresh"
+ * action via POST /api/olts/:id/test-connection for the detail page.
+ *
+ * NOTE: getSystemInfo() currently returns raw, unparsed CLI text — no
+ * structured model/ponPorts parser exists yet for either vendor. We only
+ * set what we can honestly claim to know: connectivity status and the
+ * raw version string. Anything claiming to auto-fill ponPorts/model today
+ * would be guessing, not data.
+ */
+async function testAndSyncOlt(oltId) {
+  const olt = await OLT.findById(oltId).select('+password');
+  if (!olt) return { success: false, message: 'OLT not found' };
+
+  const result = await oltService.testConnection(olt);
+
+  if (!result.success) {
+    olt.status = 'unreachable';
+    olt.lastChecked = new Date();
+    await olt.save();
+    return { success: false, message: result.message, error: result.error, olt };
+  }
+
+  olt.status = 'online';
+  olt.lastOnline = new Date();
+  olt.lastChecked = new Date();
+  olt.firmwareVersion = result.version || olt.firmwareVersion;
+  await olt.save();
+
+  return { success: true, message: result.message, olt };
+}
 
 /**
  * @desc    Update OLT
@@ -243,6 +279,8 @@ exports.updateOlt = asyncHandler(async (req, res, next) => {
   const {
     name,
     description,
+    siteId,
+    routerId,
     ip,
     port,
     username,
@@ -277,9 +315,43 @@ exports.updateOlt = asyncHandler(async (req, res, next) => {
     }
   }
 
+  // If routerId is being changed, validate it exists and belongs to the
+  // OLT's site (using the new siteId if that's also being changed in this
+  // same request, otherwise the OLT's existing siteId).
+  if (routerId && routerId !== olt.routerId?.toString()) {
+    const Router = require('../models/Router');
+    const router = await Router.findById(routerId);
+    if (!router) {
+      return next(new ErrorResponse(getResourceNotFoundMessage('Router'), 404));
+    }
+    const effectiveSiteId = siteId || olt.siteId;
+    if (router.site.toString() !== effectiveSiteId.toString()) {
+      return next(new ErrorResponse(
+        'Selected router does not belong to the selected site',
+        400
+      ));
+    }
+  }
+
+  // If siteId is being changed without an explicit routerId change, verify
+  // the OLT's existing router still belongs to the new site — otherwise
+  // the OLT would end up pointing at a router from the wrong site.
+  if (siteId && siteId !== olt.siteId?.toString() && !routerId) {
+    const Router = require('../models/Router');
+    const currentRouter = await Router.findById(olt.routerId);
+    if (currentRouter && currentRouter.site.toString() !== siteId.toString()) {
+      return next(new ErrorResponse(
+        `OLT's current router belongs to a different site. Provide a new routerId that belongs to the new site.`,
+        400
+      ));
+    }
+  }
+
   // Update fields
   if (name) olt.name = name;
   if (description !== undefined) olt.description = description;
+  if (siteId) olt.siteId = siteId;
+  if (routerId) olt.routerId = routerId;
   if (ip) olt.ip = ip;
   if (port) olt.port = port;
   if (username) olt.username = username;
@@ -393,16 +465,48 @@ exports.testConnection = asyncHandler(async (req, res, next) => {
 
   console.log(`\n🔌 Testing connection to ${olt.brand.toUpperCase()} OLT: ${olt.name}`);
 
-  // Test connection using vendor-specific service
+  // Test connection — this now does real discovery (version + board/slot
+  // detection), not just a bare connectivity check. See huawei.js's
+  // testConnection for what "discovered" actually contains.
   const result = await oltService.testConnection(olt);
 
-  // Update OLT status
+  const changes = {};
+
   if (result.success) {
     olt.status = 'online';
     olt.lastOnline = new Date();
     olt.lastChecked = new Date();
-    if (result.version) {
+
+    if (result.version && result.version !== 'unknown' && result.version !== olt.firmwareVersion) {
+      changes.firmwareVersion = { from: olt.firmwareVersion, to: result.version };
       olt.firmwareVersion = result.version;
+    }
+
+    // Compare discovered gponSlots against what's currently saved —
+    // only write and log if something actually changed, per "compare
+    // what we have saved vs what we get, then update" requirement.
+    // This is what makes ONU listing/discovery actually safe to run
+    // (see huawei.js getAllOnus/getUnconfiguredOnus, which now refuse
+    // to run a blind sweep without gponSlots set).
+    if (result.discovered?.gponSlots) {
+      const discoveredSlots = [...result.discovered.gponSlots].sort();
+      const currentSlots = [...(olt.gponSlots || [])].sort();
+      const slotsChanged = JSON.stringify(discoveredSlots) !== JSON.stringify(currentSlots);
+
+      if (slotsChanged) {
+        changes.gponSlots = { from: currentSlots, to: discoveredSlots };
+        olt.gponSlots = discoveredSlots;
+      }
+    }
+
+    // Persist the full board list too — useful on the detail page to
+    // show real chassis info (control board, uplink board, etc.), not
+    // just which slots are GPON.
+    if (result.discovered?.boards) {
+      olt.stats = olt.stats || {};
+      olt.stats.slotsTotal = result.discovered.boards.length;
+      olt.stats.slotsOccupied = result.discovered.boards.filter(b => b.boardName).length;
+      olt.discoveredBoards = result.discovered.boards;
     }
   } else {
     olt.status = 'offline';
@@ -411,16 +515,22 @@ exports.testConnection = asyncHandler(async (req, res, next) => {
 
   await olt.save();
 
-  // Log test
+  // Log test — including what actually changed, if anything, so there's
+  // a real audit trail of when discovery updated stored OLT facts.
   await SystemLog.create({
     eventType: 'olt_connection_test',
     severity: result.success ? 'info' : 'warning',
     regionCode: olt.regionCode,
     entityType: 'olt',
     entityId: olt._id,
-    message: `Connection test ${result.success ? 'successful' : 'failed'} for OLT ${olt.name}`,
+    message: `Connection test ${result.success ? 'successful' : 'failed'} for OLT ${olt.name}${Object.keys(changes).length ? ' (discovered changes: ' + Object.keys(changes).join(', ') + ')' : ''}`,
     details: {
-      result,
+      result: {
+        success: result.success,
+        version: result.version,
+        error: result.error
+      },
+      changes,
       brand: olt.brand
     },
     triggeredBy: req.session.userId,
@@ -435,7 +545,10 @@ exports.testConnection = asyncHandler(async (req, res, next) => {
       version: result.version,
       vendor: result.vendor || olt.brand,
       oltStatus: olt.status,
-      lastChecked: olt.lastChecked
+      lastChecked: olt.lastChecked,
+      gponSlots: olt.gponSlots,
+      boards: olt.discoveredBoards || [],
+      changes
     }
   });
 });
@@ -807,6 +920,91 @@ exports.testCredentials = asyncHandler(async (req, res, next) => {
       version: result.version,
       error: result.error
     }
+  });
+});
+
+/**
+ * @desc    Authorize an autofind ONU using Skylink custom baseline profiles
+ * @route   POST /api/olts/:id/authorize-skylink
+ * @access  Private
+ */
+exports.authorizeOnuSkylink = asyncHandler(async (req, res, next) => {
+  const { ponPort, sn, desc, mgmtVlan, lineProfileId, serviceProfileId } = req.body;
+
+  if (ponPort === undefined || !sn || !desc || !mgmtVlan) {
+    return next(new ErrorResponse('Please provide ponPort, sn, desc, and mgmtVlan', 400));
+  }
+
+  // 1. Fetch OLT document (including password for the Netmiko session)
+  const olt = await OLT.findById(req.params.id).select('+password');
+  if (!olt) {
+    return next(new ErrorResponse(getResourceNotFoundMessage('OLT', req.params.id), 404));
+  }
+
+  console.log(`🚀 [Skylink Engine] Starting authorization for SN ${sn} on OLT ${olt.name}`);
+
+  // 2. Fire the hardware provisioning steps on the OLT.
+  // lineProfileId/serviceProfileId are optional overrides — defaults inside
+  // authorizeNewOnuSkylink use the SkyLink baseline line profile and the
+  // adaptive service profile (matches any ONT model, avoids POTS-count mismatches).
+  const provisionResult = await oltService.authorizeNewOnuSkylink(olt, {
+    ponPort: parseInt(ponPort, 10),
+    sn,
+    desc,
+    mgmtVlan: parseInt(mgmtVlan, 10),
+    ...(lineProfileId !== undefined && { lineProfileId: parseInt(lineProfileId, 10) }),
+    ...(serviceProfileId !== undefined && { serviceProfileId: parseInt(serviceProfileId, 10) })
+  });
+
+  if (!provisionResult.success) {
+    return next(new ErrorResponse(`Hardware Provisioning Failed: ${provisionResult.error}`, 500));
+  }
+
+  // 3. Save the synchronized reality into your Mongo collections.
+  // Upsert on serialNumber rather than blind create — a SN can legitimately be
+  // re-authorized (deleted from OLT and re-added, moved to a different port,
+  // re-registered after a factory reset) without colliding with a stale record.
+  const newOnu = await ONU.findOneAndUpdate(
+    { serialNumber: sn },
+    {
+      oltId: olt._id,
+      siteId: olt.siteId,
+      regionCode: olt.regionCode,
+      ponPort: parseInt(ponPort, 10),
+      onuId: provisionResult.onuId,
+      serialNumber: sn,
+      brand: 'huawei',
+      notes: desc,
+      servicePortIndex: provisionResult.servicePortIndex,
+      managementIp: provisionResult.managementIp || undefined,
+      vlan: parseInt(mgmtVlan, 10),
+      status: 'offline', // flips to 'online' once TR-069 informs / DHCP completes
+      authStatus: 'authorized',
+      authorizedAt: new Date()
+    },
+    { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+  );
+
+  // 4. Log the system modification activity
+  await SystemLog.create({
+    eventType: "admin_action",
+    severity: "info",
+    regionCode: olt.regionCode,
+    entityType: "onu",
+    entityId: newOnu._id,
+    
+    message: provisionResult.managementIp
+      ? `Onu authorised, record created, management IP ${provisionResult.managementIp} assigned`
+      : `Onu authorised and record created (management IP pending DHCP)`,
+    triggeredBy: req.session.userId,
+    success: true,
+  });
+
+
+  res.status(201).json({
+    success: true,
+    message: 'ONU successfully authorized and management framework deployed',
+    data: newOnu
   });
 });
 

@@ -1,5 +1,6 @@
 const asyncHandler = require("../middleware/asyncHandler");
 const { ErrorResponse } = require("../middleware/errorHandler");
+const {generateAndSendVouchers} = require("../services/voucherGenerationService");
 const Payment = require("../models/Payment");
 const Transaction = require("../models/Transaction");
 const Customer = require("../models/Customer");
@@ -14,6 +15,10 @@ const SystemLog = require("../models/SystemLog");
 const kopokopoService = require("../services/kopokopoService");
 const { calculatePeriodEnd } = require("../utils/invoiceHelpers");
 const { formatPhoneNumber } = require("../utils/phoneHelpers");
+// paymentControllerKopoKopo.js
+
+const crypto = require('crypto');
+
 
 async function logSms(
   recipient,
@@ -104,7 +109,7 @@ async function activateAccount(customer, packageDoc) {
   );
   const cycleResult = await radiusService.setBillingCycleStart(
     customer.pppoe.username,
-    Date.now(),
+    new Date()
   );
   if (!radiusResult.success) {
     console.error("⚠️ RADIUS enable failed:", radiusResult.error);
@@ -199,7 +204,29 @@ exports.lookupCustomer = asyncHandler(async (req, res, next) => {
  *
  * Supports M-Pesa, Airtel Money, and Card payments
  */
+
 exports.initiatePayment = asyncHandler(async (req, res, next) => {
+  const { customerId, packageId, phoneNumber, channel, amount: customAmount, redirectUrl } = req.body;
+  // fetch customer and site
+  const customer = await Customer.findById(customerId);
+  if (!customer) return next(new ErrorResponse('Customer not found', 404));
+  const site = await Site.findById(customer.siteId);
+  console.log("Site: ", site)
+  const preferredGateway = site?.preferredPaymentGateway || 'kopokopo';
+
+  console.log("Prefered gateway: ", preferredGateway)
+  // then call the appropriate function
+  if (preferredGateway === 'daraja') {
+    // call initiateMpesaPayment with same params
+    return initiateMpesaPayment(req, res, next);
+  } else {
+    // call initiateKopokopoPayment
+    return initiateKopokopoPayment(req, res, next);
+  }
+});
+
+
+const initiateKopokopoPayment= asyncHandler(async (req, res, next) => {
   const {
     customerId,
     packageId,
@@ -225,7 +252,12 @@ exports.initiatePayment = asyncHandler(async (req, res, next) => {
   if (!customer) return next(new ErrorResponse("Customer not found", 404));
 
   const site = customer.siteId;
-const siteConfig = site?.payment?.kopokopo || null;
+
+  const preferredGateway = site?.preferredPaymentGateway || 'kopokopo';
+  
+
+
+  const siteConfig = site?.payment?.kopokopo || null;
 
   const packageDoc = await Package.findById(packageId);
   if (!packageDoc) return next(new ErrorResponse("Package not found", 404));
@@ -313,6 +345,7 @@ const siteConfig = site?.payment?.kopokopo || null;
       customerType: customer.pppoe ? "pppoe" : "hotspot",
       regionCode: customer.regionCode,
       siteId: customer.siteId,
+      source: "stk",
       amount,
       paymentMethod: paymentChannel,
       status: "pending",
@@ -371,6 +404,146 @@ const siteConfig = site?.payment?.kopokopo || null;
   } catch (error) {
     console.error("❌ Payment initiation error:", error);
     return next(new ErrorResponse("Payment initiation failed", 500));
+  }
+});
+
+// ── New M‑Pesa initiation ──────────────────────────────────────
+const initiateMpesaPayment = asyncHandler(async (req, res, next) => {
+  const {
+    customerId,
+    packageId,
+    phoneNumber,
+    amount: customAmount,
+  } = req.body;
+
+  console.log("\n💰 [initiateMpesaPayment] Starting M‑Pesa payment...");
+  console.log(`   Customer ID: ${customerId}`);
+  console.log(`   Package ID: ${packageId}`);
+  console.log(`   Phone: ${phoneNumber}`);
+
+  // 1. Validate required fields
+  if (!customerId || !packageId || !phoneNumber) {
+    return next(new ErrorResponse("Missing required fields (customerId, packageId, phoneNumber)", 400));
+  }
+
+  // 2. Fetch customer, site, package
+  const customer = await Customer.findById(customerId)
+    .populate("subscription.packageId")
+    .populate("siteId");
+  if (!customer) return next(new ErrorResponse("Customer not found", 404));
+
+  const site = customer.siteId;
+  if (!site) return next(new ErrorResponse("Site configuration not found", 404));
+
+  const packageDoc = await Package.findById(packageId);
+  if (!packageDoc) return next(new ErrorResponse("Package not found", 404));
+
+  const amount = customAmount || packageDoc.price;
+
+  // 3. Validate M‑Pesa credentials on site
+  const mpesaConfig = site.payment?.mpesa || {};
+  if (!mpesaConfig.consumerKey || !mpesaConfig.consumerSecret || !mpesaConfig.passkey || !mpesaConfig.shortcode) {
+    return next(new ErrorResponse("M‑Pesa credentials not configured for this site", 400));
+  }
+
+  // 4. Inject credentials into mpesaService singleton
+  const mpesaService = require('../services/mpesaService');
+  mpesaService.consumerKey = mpesaConfig.consumerKey;
+  mpesaService.consumerSecret = mpesaConfig.consumerSecret;
+  mpesaService.passkey = mpesaConfig.passkey;
+  mpesaService.shortcode = mpesaConfig.shortcode;
+  mpesaService.environment = mpesaConfig.environment || 'sandbox';
+
+  // 5. Build callback URL
+  const callbackUrl = `${process.env.BASE_URL}/api/payments/mpesa/webhook`;
+
+  try {
+    // 6. Initiate STK push
+    const result = await mpesaService.initiateSTKPush({
+      phoneNumber,
+      amount,
+      accountReference: customer.accountId,
+      callbackUrl,
+      transactionDesc: `${packageDoc.packageName} subscription`,
+    });
+
+    if (!result.success) {
+      return next(new ErrorResponse(result.error || 'M‑Pesa STK push failed', 500));
+    }
+
+    console.log("✅ M‑Pesa STK push sent");
+
+    // 7. Create pending payment record
+    const payment = await Payment.create({
+      customerId: customer._id,
+      accountId: customer.accountId,
+      customerType: customer.pppoe ? "pppoe" : "hotspot",
+      regionCode: customer.regionCode,
+      siteId: customer.siteId,
+      source: "stk",
+      amount,
+      paymentMethod: "mpesa",
+      status: "pending",
+      packageId: packageDoc._id,
+      paymentChannel: "mpesa",
+      stkID: result.checkoutRequestId,               // primary identifier
+      checkoutRequestId: result.checkoutRequestId,
+      stkPush: {
+        phoneNumber: phoneNumber,
+        checkoutRequestId: result.checkoutRequestId,
+        merchantRequestId: result.merchantRequestId || null,
+        initiatedAt: new Date(),
+      },
+      metadata: {
+        packageId: packageDoc._id,
+        packageName: packageDoc.packageName,
+        phoneNumber,
+        initiatedAt: new Date(),
+        gateway: "daraja",
+        rawInitResponse: {
+          checkoutRequestId: result.checkoutRequestId,
+          merchantRequestId: result.merchantRequestId,
+          responseCode: result.responseCode,
+          responseDescription: result.responseDescription,
+          customerMessage: result.customerMessage,
+        },
+      },
+    });
+
+    // 8. System log
+    await SystemLog.create({
+      eventType: "payment_initiated",
+      severity: "info",
+      regionCode: customer.regionCode,
+      entityType: "payment",
+      entityId: payment._id,
+      accountId: customer.accountId,
+      message: `M‑Pesa STK push of KES ${amount} initiated for ${customer.accountId} (Daraja)`,
+      details: {
+        amount,
+        channel: "mpesa",
+        paymentId: payment._id,
+        checkoutRequestId: result.checkoutRequestId,
+      },
+      success: true,
+    });
+
+    // 9. Response
+    res.status(200).json({
+      success: true,
+      message: "M‑Pesa STK push sent. Please check your phone.",
+      data: {
+        paymentId: payment._id,
+        amount,
+        channel: "mpesa",
+        status: "pending",
+        checkoutRequestId: result.checkoutRequestId,
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ M‑Pesa initiation error:", error);
+    return next(new ErrorResponse("M‑Pesa initiation failed", 500));
   }
 });
 
@@ -477,8 +650,18 @@ exports.kopokopoWebhook = asyncHandler(async (req, res, next) => {
             phoneNumber: phoneNumber || payment.metadata?.phoneNumber,
           });
         } else {
-          const customer = await Customer.findById(payment.customerId);
+          let customer = await Customer.findById(payment.customerId);
+
+          if(customer && customer.isChild && customer.shared.expiryWithParent){
+            customer = await Customer.findById(customer.parentAccount);
+            console.log("It was for a child that shared due date with parent so we keep it in parent");
+
+            payment.customerId = customer._id;
+            await payment.save();
+          }
+
           if (customer) {
+            
             await processSuccessfulPayment(payment, customer, {
               receiptNumber: transactionReference,
               transactionDate: new Date(transactionDate),
@@ -558,6 +741,27 @@ exports.kopokopoWebhook = asyncHandler(async (req, res, next) => {
         return;
       }
 
+      if(customer.isChild && customer.shared.expiryWithParent){
+        customer = await Customer.findById(customer.parentAccount);
+      }
+
+
+      if (!customer) {
+        console.log(`Initial found customer was a child shared account and we could not find the parent account.`);
+        await UnprocessedPayment.create({
+          receiptNumber: transactionReference,
+          phoneNumber: phoneNumber || hashedPhoneNumber,
+          amount,
+          transactionDate: new Date(transactionDate),
+          rawData: payload,
+          status: "new",
+          tillNumber: senderTill
+        });
+        return;
+      }
+
+
+
       const packageId = customer.subscription?.packageId;
       if (!packageId) {
         console.error(`❌ Customer ${customer.accountId} has no package assigned`);
@@ -584,6 +788,7 @@ exports.kopokopoWebhook = asyncHandler(async (req, res, next) => {
         kopokopoPaymentId: paymentRequestId || `C2B-${transactionReference}`,
         mpesaReceiptNumber: transactionReference,
         customerType: "pppoe",
+        source: "till",
         packageId,
         stkID: `C2B-${Date.now()}`,
         checkoutRequestId: transactionReference,
@@ -609,6 +814,273 @@ exports.kopokopoWebhook = asyncHandler(async (req, res, next) => {
   });
 });
 
+
+/**
+ * @desc    Handle M‑Pesa (Daraja) webhooks (STK push & C2B)
+ * @route   POST /api/payments/mpesa/webhook
+ * @access  Public
+ */
+exports.mpesaWebhook = asyncHandler(async (req, res, next) => {
+  console.log('📡 [MpesaWebhook] Received body:', JSON.stringify(req.body, null, 2));
+  res.sendStatus(200); // Acknowledge immediately
+
+  setImmediate(async () => {
+    try {
+      const payload = req.body;
+      const { Body } = payload;
+
+      // ─── STK Push callback ──────────────────────────────────────────
+      if (Body && Body.stkCallback) {
+        const stkCallback = Body.stkCallback;
+        const resultCode = stkCallback.ResultCode;
+        const resultDesc = stkCallback.ResultDesc;
+        const checkoutRequestId = stkCallback.CheckoutRequestID;
+
+        // Try to find pending payment by stkID
+        const payment = await Payment.findOne({
+          stkID: checkoutRequestId,
+          status: 'pending'
+        });
+
+        // Extract metadata
+        const callbackMetadata = stkCallback.CallbackMetadata?.Item || [];
+        const getItem = (name) => callbackMetadata.find(item => item.Name === name)?.Value;
+        const mpesaReceipt = getItem('MpesaReceiptNumber');
+        const phone = getItem('PhoneNumber'); // Plain text
+        const amount = getItem('Amount');
+        const transTime = getItem('TransactionDate');
+
+        // If no pending payment, store as unprocessed
+        if (!payment) {
+          console.log(`⚠️ No pending payment for CheckoutRequestID: ${checkoutRequestId}`);
+          await UnprocessedPayment.create({
+            receiptNumber: mpesaReceipt || checkoutRequestId,
+            phoneNumber: phone || null,
+            amount: amount || null,
+            transactionDate: transTime ? new Date(transTime) : new Date(),
+            rawData: payload,
+            status: 'new',
+            tillNumber: null, // STK push doesn't have till number
+            accountReference: stkCallback.MerchantRequestID || null,
+          });
+          return;
+        }
+
+        // Update payment with callback data
+        payment.callbackReceived = true;
+        payment.callbackData = payload;
+
+        if (resultCode === 0) {
+          // Success
+          payment.status = 'completed';
+          payment.mpesaReceiptNumber = mpesaReceipt;
+          payment.completedAt = new Date();
+          if (phone) payment.stkPush.phoneNumber = phone;
+          await payment.save();
+
+          // Process using shared logic
+          if (payment.customerType === 'hotspot') {
+            await activateHotspotAfterPayment(payment, {
+              receiptNumber: mpesaReceipt,
+              transactionDate: new Date(),
+              phoneNumber: phone,
+            });
+          } else {
+            let customer = await Customer.findById(payment.customerId);
+
+            if (customer && customer.isChild && customer.shared.expiryWithParent) {
+              customer = await Customer.findById(customer.parentAccount);
+              console.log("Child shares expiry with parent – updating parent.");
+              payment.customerId = customer._id;
+              await payment.save();
+            }
+
+            if (customer) {
+              await processSuccessfulPayment(payment, customer, {
+                receiptNumber: mpesaReceipt,
+                transactionDate: new Date(),
+                phoneNumber: phone || payment.metadata?.phoneNumber,
+              });
+            }
+          }
+        } else {
+          // Failure
+          payment.status = 'failed';
+          payment.error = { code: resultCode, message: resultDesc };
+          await payment.save();
+        }
+        return;
+      }
+
+      // ─── C2B callback (direct till payment) ──────────────────────────
+      if (Body && Body.TransID) {
+        const transId = Body.TransID;
+        const transAmount = parseFloat(Body.TransAmount);
+        const transTime = Body.TransTime;
+        const msisdn = Body.MSISDN; // hashed phone
+        const billRef = Body.BillRefNumber; // account reference
+        const businessShortCode = Body.BusinessShortCode; // till / paybill number
+
+        // 1. Check for duplicate
+        const alreadyProcessed = await Payment.findOne({ mpesaReceiptNumber: transId });
+        if (alreadyProcessed) {
+          console.log(`ℹ️ Duplicate C2B receipt ${transId}, ignoring.`);
+          return;
+        }
+
+        // 2. Find site by till number (BusinessShortCode)
+        if (!businessShortCode) {
+          console.log(`❌ No BusinessShortCode in C2B webhook, storing as unprocessed.`);
+          await UnprocessedPayment.create({
+            receiptNumber: transId,
+            phoneNumber: msisdn || null,
+            amount: transAmount,
+            transactionDate: new Date(transTime),
+            rawData: payload,
+            status: 'new',
+            tillNumber: null,
+            accountReference: billRef || null,
+          });
+          return;
+        }
+
+        const projectedSite = await Site.findOne({
+          $or: [
+            { "payment.tillNumber": businessShortCode },
+            { "payment.mpesa.shortcode": businessShortCode },
+            { "payment.kopokopo.tillNumber": businessShortCode } // fallback if using kopokopo till
+          ]
+        });
+
+        if (!projectedSite) {
+          console.log(`❌ No site found for BusinessShortCode: ${businessShortCode}, storing as unprocessed.`);
+          await UnprocessedPayment.create({
+            receiptNumber: transId,
+            phoneNumber: msisdn || null,
+            amount: transAmount,
+            transactionDate: new Date(transTime),
+            rawData: payload,
+            status: 'new',
+            tillNumber: businessShortCode,
+            accountReference: billRef || null,
+          });
+          return;
+        }
+
+        // 3. Use the hashed phone (MSISDN) to find customer within the site's region
+        const hashedPhone = msisdn; // Daraja sends hashed MSISDN for C2B
+        let customer = await Customer.findOne({
+          hashedPhone: hashedPhone,
+          regionCode: projectedSite.regionCode
+        });
+
+        if (!customer) {
+          customer = await Customer.findOne({
+            hashedAlternatePhone: hashedPhone,
+            regionCode: projectedSite.regionCode
+          });
+        }
+
+        if (!customer) {
+          console.log(`❌ No customer found for hashed phone in region ${projectedSite.regionCode}, storing as unprocessed.`);
+          await UnprocessedPayment.create({
+            receiptNumber: transId,
+            phoneNumber: hashedPhone,
+            amount: transAmount,
+            transactionDate: new Date(transTime),
+            rawData: payload,
+            status: 'new',
+            tillNumber: businessShortCode,
+            accountReference: billRef || null,
+          });
+          return;
+        }
+
+        // 4. Handle child sharing expiry
+        if (customer.isChild && customer.shared.expiryWithParent) {
+          customer = await Customer.findById(customer.parentAccount);
+          if (!customer) {
+            console.log(`❌ Parent not found for child, storing as unprocessed.`);
+            await UnprocessedPayment.create({
+              receiptNumber: transId,
+              phoneNumber: hashedPhone,
+              amount: transAmount,
+              transactionDate: new Date(transTime),
+              rawData: payload,
+              status: 'new',
+              tillNumber: businessShortCode,
+              accountReference: billRef || null,
+            });
+            return;
+          }
+        }
+
+        // 5. Check customer has a package
+        const packageId = customer.subscription?.packageId;
+        if (!packageId) {
+          console.error(`❌ Customer ${customer.accountId} has no package assigned.`);
+          await UnprocessedPayment.create({
+            receiptNumber: transId,
+            phoneNumber: null,
+            amount: transAmount,
+            transactionDate: new Date(transTime),
+            rawData: payload,
+            status: 'new',
+            tillNumber: businessShortCode,
+            accountReference: billRef || null,
+          });
+          return;
+        }
+
+        // 6. Create a completed payment record (C2B is final)
+        const newPayment = await Payment.create({
+          customerId: customer._id,
+          accountId: customer.accountId,
+          regionCode: customer.regionCode,
+          siteId: customer.siteId,
+          amount: transAmount,
+          paymentMethod: 'mpesa',
+          status: 'completed',
+          mpesaReceiptNumber: transId,
+          customerType: 'pppoe',
+          source: 'till',
+          packageId,
+          stkID: `C2B-${transId}`,
+          checkoutRequestId: transId,
+          completedAt: new Date(),
+          stkPush: {
+            phoneNumber: null, // we don't have plain text phone
+            initiatedAt: new Date(transTime),
+          },
+          metadata: {
+            packageId,
+            phoneNumber: null,
+            source: 'c2b_daraja',
+            receivedAt: new Date(),
+            rawWebhook: payload,
+            hashedMsisdn: hashedPhone,
+            billRefNumber: billRef,
+          },
+        });
+
+        // 7. Process the payment
+        await processSuccessfulPayment(newPayment, customer, {
+          receiptNumber: transId,
+          transactionDate: new Date(transTime),
+          phoneNumber: hashedPhone
+        });
+
+        return;
+      }
+
+      console.log('⚠️ Unknown webhook type, ignoring');
+    } catch (error) {
+      console.error('🔥 [MpesaWebhook] Async error:', error);
+    }
+  });
+});
+
+
 // ============================================
 // PROCESS SUCCESSFUL PAYMENT (shared logic)
 // ============================================
@@ -630,18 +1102,13 @@ async function processSuccessfulPayment(payment, customer, webhookData) {
   if (phoneNumber) payment.stkPush = { phoneNumber, completedAt: new Date() };
   await payment.save();
 
-  // 2. Get the associated package
-  const packageId =
-    payment.metadata?.packageId || customer.subscription?.packageId;
-  if (!packageId) {
-    throw new Error(`No package found for customer ${customer.accountId}`);
-  }
+  // 2. Get package
+  const packageId = payment.metadata?.packageId || customer.subscription?.packageId;
+  if (!packageId) throw new Error(`No package for ${customer.accountId}`);
   const packageDoc = await Package.findById(packageId);
-  if (!packageDoc) {
-    throw new Error(`Package ${packageId} not found`);
-  }
+  if (!packageDoc) throw new Error(`Package ${packageId} not found`);
 
-  // 3. Create MPESA transaction (credit)
+  // 3. Create MPESA transaction (always)
   const mpesaTransaction = await Transaction.create({
     type: "MPESA",
     customerType: "pppoe",
@@ -664,50 +1131,35 @@ async function processSuccessfulPayment(payment, customer, webhookData) {
     relatedPaymentId: payment._id,
   });
 
-  console.log(`✅ MPESA transaction created: ${mpesaTransaction._id}`);
-
-  // 4. Determine if customer is active or expired
-  const now = new Date();
+  // 4. Calculate new wallet balance (tentative)
   const currentBalance = customer.billing?.balance || 0;
-  const totalAvailable = currentBalance + payment.amount;
+  const newBalance = currentBalance + payment.amount;
+
+  // 5. Decision logic
+  const isActive = customer.subscription?.status === "active" || customer.subscription?.status === "suspended";
   const packagePrice = packageDoc.price;
-  const isActive = customer.subscription?.status === "active";
+  let shouldActivateNow = false;
+  let waitingFlag = false;
 
-  let transactionType,
-    transactionDescription,
-    newBalance,
-    smsMessage,
-    shouldActivate = false;
+  const radiusService = require("../services/radiusService");
 
-  if (isActive) {
-    // Active: add to wallet
-    transactionType = "WALLET";
-    transactionDescription = `Funds added to wallet (KopoKopo payment)`;
-    newBalance = totalAvailable;
-    shouldActivate = false;
-    smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your payment of KES ${payment.amount} was successfully received. The amount has been added to your wallet balance and will be used to renew once your subscription expires. Your new skylink wallet balance is KES ${totalAvailable}. Thank you!`;
-  } else {
-    // Inactive: check if payment covers package price
-    if (totalAvailable >= packagePrice) {
-      transactionType = "SUBSCRIPTION";
-      transactionDescription = `Subscription activation via KopoKopo - ${packageDoc.packageName}`;
-      newBalance = totalAvailable - packagePrice;
-      shouldActivate = true;
-      smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your payment of KES ${payment.amount} was successfully received. The amount has been used to renew your subscription. Your new skylink wallet balance is KES ${newBalance}. Thank you!`;
+  if (!isActive) {
+    const hasActiveSession = await radiusService.hasActiveSession(customer.pppoe.username);
+    if (hasActiveSession && newBalance >= packagePrice) {
+      shouldActivateNow = true;
+      waitingFlag = false;
+    } else if (!hasActiveSession && newBalance >= packagePrice) {
+      shouldActivateNow = false;
+      waitingFlag = true;
     } else {
-      transactionType = "WALLET";
-      transactionDescription = `Insufficient balance - funds added to wallet (KopoKopo payment)`;
-      newBalance = totalAvailable;
-      smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your payment of KES ${payment.amount} was successfully received. The amount has been added to your wallet balance since it is not enough to renew your current subscription. Incase you want to change your subcsription, please contact 0111053184. Your new balance is KES ${totalAvailable}. Thank you!`;
-      shouldActivate = false;
+      shouldActivateNow = false;
+      waitingFlag = false;
     }
   }
 
-  // 5. Create secondary transaction (debit for subscription or credit for wallet)
-  const secondaryAmount =
-    transactionType === "SUBSCRIPTION" ? -packagePrice : -payment.amount;
-  const secondTransaction = await Transaction.create({
-    type: transactionType,
+  // 6. Wallet transaction (always)
+  const walletTransaction = await Transaction.create({
+    type: "WALLET",
     customerType: "pppoe",
     customerId: customer._id,
     accountId: customer.accountId,
@@ -715,126 +1167,187 @@ async function processSuccessfulPayment(payment, customer, webhookData) {
     lastName: customer.lastName,
     regionCode: payment.regionCode,
     siteId: payment.siteId,
-    amount: secondaryAmount,
-    description: transactionDescription,
+    amount: payment.amount,
+    description: `Funds added to wallet (payment), initial balance: ${currentBalance}, newBalance: ${newBalance}`,
     paymentMethod: payment.paymentMethod || "mpesa",
-    packageId: transactionType === "SUBSCRIPTION" ? packageDoc._id : undefined,
     relatedTransactionId: mpesaTransaction._id,
     status: "completed",
     relatedPaymentId: payment._id,
   });
 
-  mpesaTransaction.relatedTransactionId = secondTransaction._id;
+  mpesaTransaction.relatedTransactionId = walletTransaction._id;
   await mpesaTransaction.save();
 
-  console.log(
-    `✅ Secondary transaction created: ${secondTransaction._id} (${transactionType})`,
-  );
+  // ============================================
+  // DATABASE UPDATE (direct, to avoid Mongoose issues)
+  // ============================================
+  const now = new Date();
+  let finalBalance = newBalance;
+  let subscriptionUpdate = {};
 
-  // 6. Update customer balance
-  if (!customer.billing) customer.billing = {};
-  customer.billing.balance = newBalance;
-  customer.billing.lastPaymentDate = now;
-  await customer.save();
+  if (shouldActivateNow) {
+    // Deduct package price from balance
+    const afterDeduction = newBalance - packagePrice;
+    finalBalance = afterDeduction;
+    const period = packageDoc.period > 0 ? packageDoc.period : 30;
 
-  console.log(`💵 Customer balance updated to ${newBalance}`);
-
-  // 7. Handle activation if needed
-  if (shouldActivate && customer.pppoe && customer.pppoe.username) {
-    const currentExpiry = customer.subscription?.expiresAt;
-    const baseDate = isActive && currentExpiry > now ? currentExpiry : now;
-    let newExpiry = calculatePeriodEnd(baseDate, packageDoc.period, packageDoc.periodUnit);
-    
-    // Apply free extension days deduction if any
+    let newExpiry = calculatePeriodEnd(now, period, packageDoc.periodUnit);
     if (customer.freeExtensionDays && customer.freeExtensionDays > 0) {
-      const extensionDays = customer.freeExtensionDays;
       newExpiry = new Date(newExpiry);
-      newExpiry.setDate(newExpiry.getDate() - extensionDays);
+      newExpiry.setDate(newExpiry.getDate() - customer.freeExtensionDays);
       if (newExpiry < now) newExpiry = now;
-      console.log(`   Deducted ${extensionDays} free extension days from new expiry.`);
-      customer.freeExtensionDays = 0; // reset after use
+      // We'll also clear freeExtensionDays in the update
     }
-    
-    customer.subscription.expiresAt = newExpiry;
 
-    customer.subscription = customer.subscription || {};
-    customer.subscription.status = "active";
-    customer.subscription.packageId = packageDoc._id;
-    customer.subscription.activatedAt =
-      customer.subscription.activatedAt || now;
-    customer.subscription.expiresAt = newExpiry;
-    customer.subscription.autoRenew = true;
+    subscriptionUpdate = {
+      'subscription.status': 'active',
+      'subscription.activatedAt': now,
+      'subscription.expiresAt': newExpiry,
+      'subscription.packageId': packageDoc._id,
+      'billing.balance': afterDeduction,
+      'billing.lastPaymentDate': now,
+      waitingForSession: false,
+      freeExtensionDays: 0, // reset if we had any
+    };
 
-    await customer.save();
-    console.log(`📅 Subscription activated, expires at ${newExpiry}`);
+    // Create SUBSCRIPTION transaction
+    const subscriptionTransaction = await Transaction.create({
+      type: "SUBSCRIPTION",
+      customerType: "pppoe",
+      customerId: customer._id,
+      accountId: customer.accountId,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      regionCode: payment.regionCode,
+      siteId: payment.siteId,
+      amount: -packagePrice,
+      description: `Subscription activation via payment (immediate)`,
+      paymentMethod: payment.paymentMethod || "mpesa",
+      packageId: packageDoc._id,
+      relatedTransactionId: mpesaTransaction._id,
+      status: "completed",
+      relatedPaymentId: payment._id,
+    });
 
-    // Activate in RADIUS
-    const site = await Site.findById(customer.siteId);
-    if (site) {
-      try {
-        await activateAccount(customer, packageDoc);
-        console.log("✅ RADIUS account activated");
-      } catch (err) {
-        console.error("⚠️ RADIUS activation failed:", err.message);
-      }
-    }
+    await Transaction.findByIdAndDelete(walletTransaction._id);
+
+    mpesaTransaction.relatedTransactionId = subscriptionTransaction._id;
+    await mpesaTransaction.save();
+
+    // Enable RADIUS
+    const groupName = packageDoc.packageName.replace(/\s+/g, "_").toUpperCase();
+    await radiusService.enableAccount(customer.pppoe.username, groupName);
+    await radiusService.setBillingCycleStart(customer.pppoe.username, new Date());
+
+    // After enabling RADIUS for parent:
+if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+  // Propagate to children that share expiry
+  const children = await Customer.find({ _id: { $in: customer.sharedExpiry } }).populate('subscription.packageId');
+  for (const child of children) {
+    child.subscription.expiresAt = newExpiry; // newExpiry is the parent's new expiry
+    child.subscription.status = 'active';
+    if (!child.subscription.activatedAt) child.subscription.activatedAt = now;
+    await child.save();
+    const childGroupName = child.subscription.packageId.packageName.replace(/\s+/g, '_').toUpperCase();
+    await radiusService.enableAccount(child.pppoe.username, childGroupName);
+    await radiusService.setBillingCycleStart(child.pppoe.username, new Date());
+    // Log child activation (optional)
+  }
+}
+
+const voucherData = {
+  customerId: customer._id,
+  packageId: '6a311253de22d46f9b16b375',
+  voucherAmount: 3,
+  createdBy: null,
+  regionCode: customer.regionCode,
+  rollbackOnSmsFailure: true,
+};
+
+try{
+await generateAndSendVouchers(voucherData);
+}catch(error){
+console.log("Could not generate bonus vouchers for customer", error);
+}
+
+    console.log(`✅ RADIUS enabled for ${customer.pppoe.username}`);
+  } else {
+    // No activation – only update balance and waiting flag
+    subscriptionUpdate = {
+      'billing.balance': newBalance,
+      'billing.lastPaymentDate': now,
+      waitingForSession: waitingFlag,
+    };
   }
 
-  // 5. Send SMS (optional – you already have mobileSasaService)
-  const smsTemplateService = require("../services/smsTemplateService")
-if(shouldActivate){
-  
-  await smsTemplateService.sendUsingTemplate(
-    'payment_renewal',
-    customer.phoneNumber,
-    {
-      customerName: `${customer.firstName} ${customer.lastName}`,
-      amount: payment.amount,
-      expiryDate: newExpiry.toLocaleDateString(),
-    },
-    { customerId: customer._id, accountId: customer.accountId, type: 'subscription_renewal', regionCode: payment.regionCode }
+  // Apply updates directly to the database
+  await Customer.updateOne(
+    { _id: customer._id },
+    { $set: subscriptionUpdate }
   );
-}else{
-  const smsTemplateService = require('../services/smsTemplateService');
-// After computing newBalance and before the SMS log
-try {
-  await smsTemplateService.sendUsingTemplate(
-    'payment_wallet',
-    customer.phoneNumber,
-    {
-      customerName: `${customer.firstName} ${customer.lastName}`,
-      amount: payment.amount,
-      newBalance: newBalance,
-    },
-    { customerId: customer._id, accountId: customer.accountId, type: 'payment_confirmation', regionCode: payment.regionCode }
-  );
-} catch (err) {
-  console.error('Wallet SMS failed:', err.message);
-}
-}
 
-  // 8. Log system event
-  await SystemLog.create({
-    eventType: shouldActivate ? "subscription_renewal" : "payment_received",
-    severity: "info",
-    regionCode: payment.regionCode,
-    entityType: "customer",
-    entityId: customer._id,
-    accountId: customer.accountId,
-    message: shouldActivate
-      ? `Subscription activated for ${customer.accountId} via KopoKopo payment`
-      : `Payment of KES ${payment.amount} added to wallet for ${customer.accountId}`,
-    details: {
-      amount: payment.amount,
-      receipt: receiptNumber,
-      transactionType,
-      newBalance,
-      activated: shouldActivate,
-    },
-    success: true,
-    relatedTransactionId: mpesaTransaction._id,
-    relatedPaymentId: payment._id,
-  });
+  // Also update the in-memory object for subsequent code (e.g., SMS)
+  if (shouldActivateNow) {
+    customer.subscription.status = 'active';
+    customer.subscription.expiresAt = subscriptionUpdate['subscription.expiresAt'];
+    customer.billing.balance = subscriptionUpdate['billing.balance'];
+    customer.waitingForSession = false;
+    await radiusService.removePendingActivation(customer.pppoe.username); 
+  } else {
+    customer.billing.balance = subscriptionUpdate['billing.balance'];
+    customer.waitingForSession = waitingFlag;
+    await radiusService.addPendingActivation(customer.pppoe.username); 
+  }
+  customer.billing.lastPaymentDate = now;
+
+  // 7. System log
+  if (shouldActivateNow) {
+    await SystemLog.create({
+      eventType: "subscription_renewal",
+      severity: "info",
+      regionCode: payment.regionCode,
+      entityType: "customer",
+      entityId: customer._id,
+      accountId: customer.accountId,
+      message: `Subscription activated immediately for ${customer.accountId} (active session)`,
+      details: { amount: payment.amount, packagePrice, newBalance: finalBalance, newExpiry: subscriptionUpdate['subscription.expiresAt'] },
+      success: true,
+    });
+  } else {
+    await SystemLog.create({
+      eventType: "payment_received",
+      severity: "info",
+      regionCode: payment.regionCode,
+      entityType: "customer",
+      entityId: customer._id,
+      accountId: customer.accountId,
+      message: `Payment of KES ${payment.amount} added to wallet for ${customer.accountId}${waitingFlag ? ' (waiting for session)' : ''}`,
+      details: { amount: payment.amount, newBalance: subscriptionUpdate['billing.balance'], waitingFlag },
+      success: true,
+    });
+  }
+
+  // 8. SMS notification (fire and forget, catch errors)
+  const smsTemplateService = require("../services/smsTemplateService");
+  try {
+    if (shouldActivateNow) {
+      await smsTemplateService.sendUsingTemplate(
+        'payment_renewal',
+        customer.phoneNumber,
+        { customerName: `${customer.firstName} ${customer.lastName}`, amount: payment.amount, expiryDate: subscriptionUpdate['subscription.expiresAt']?.toLocaleDateString() || 'N/A' },
+        { customerId: customer._id, accountId: customer.accountId, type: 'subscription_renewal', regionCode: payment.regionCode }
+      );
+    } else {
+      await smsTemplateService.sendUsingTemplate(
+        'payment_wallet',
+        customer.phoneNumber,
+        { customerName: `${customer.firstName} ${customer.lastName}`, amount: payment.amount, newBalance: subscriptionUpdate['billing.balance'] },
+        { customerId: customer._id, accountId: customer.accountId, type: 'payment_confirmation', regionCode: payment.regionCode }
+      );
+    }
+  } catch (err) {
+    console.error('Payment SMS failed:', err.message);
+  }
 
   console.log(`✅ Payment processing completed for ${customer.accountId}`);
 }
@@ -844,195 +1357,211 @@ try {
  * @param {Object} payment - Payment document (will be updated to completed)
  * @param {Object} webhookData - { receiptNumber, transactionDate, phoneNumber }
  */
+/**
+ * Activate a hotspot user after successful payment
+ * Handles BOTH new devices (no HotspotUser record yet) and returning/expired users
+ *
+ * @param {Object} payment     - Payment document (will be updated to completed)
+ * @param {Object} webhookData - { receiptNumber, transactionDate, phoneNumber }
+ */
 async function activateHotspotAfterPayment(payment, webhookData) {
-  console.log(`\n🔓 Activating hotspot user after payment: ${payment.customerId}`);
+  console.log(`\n🔓 Activating hotspot user after payment: ${payment._id}`);
   const { receiptNumber, transactionDate, phoneNumber } = webhookData;
 
-  // 1. Update payment record
-  payment.status = "completed";
+  // ─── 1. Mark payment completed ───────────────────────────────────────────────
+  payment.status       = "completed";
   payment.mpesaReceiptNumber = receiptNumber;
-  payment.completedAt = new Date();
+  payment.completedAt  = new Date();
   if (phoneNumber) payment.stkPush = { phoneNumber, completedAt: new Date() };
   await payment.save();
 
-  // 2. Fetch HotspotUser
-  const hotspotUser = await HotspotUser.findById(payment.customerId);
+  // ─── 2. Fetch or CREATE HotspotUser ──────────────────────────────────────────
+  // For brand-new devices payment.customerId is null (set that way during initiation
+  // because the user didn't exist yet). We create the Mongo record here on first pay.
+  let hotspotUser = payment.customerId
+    ? await HotspotUser.findById(payment.customerId)
+    : null;
+
   if (!hotspotUser) {
-    console.error(`❌ HotspotUser not found: ${payment.customerId}`);
-    throw new Error("Hotspot user not found");
+    const macAddress = payment.metadata?.macAddress;
+    if (!macAddress) throw new Error("No MAC address in payment metadata — cannot create HotspotUser");
+
+    console.log(`🆕 New device — creating HotspotUser for MAC: ${macAddress}`);
+
+    hotspotUser = await HotspotUser.create({
+      macAddress:    macAddress.toUpperCase(),
+      phoneNumber:   phoneNumber || null,
+      regionCode:    payment.regionCode,
+      siteId:        payment.siteId,
+      isOnline:      false,
+      activeSession: { isActive: false },
+    });
+
+    // Link the payment back to the new user so future lookups work
+    payment.customerId = hotspotUser._id;
+    await payment.save();
+
+    console.log(`   ✅ HotspotUser created: ${hotspotUser._id}`);
   }
 
-  // 3. Fetch the package
-  const packageId = payment.metadata?.packageId || payment.packageId;
+  // ─── 3. Fetch package ────────────────────────────────────────────────────────
+  const packageId  = payment.metadata?.packageId || payment.packageId;
   const packageDoc = await Package.findById(packageId);
-  if (!packageDoc) {
-    throw new Error(`Package ${packageId} not found`);
-  }
+  if (!packageDoc) throw new Error(`Package ${packageId} not found`);
 
-  // 4. Create MPESA transaction (credit)
+  // ─── 4. Create MPESA transaction (credit) ────────────────────────────────────
   const mpesaTransaction = await Transaction.create({
-    type: "MPESA",
-    customerType: "hotspot",
-    customerId: hotspotUser._id,
-    accountId: hotspotUser.macAddress,  // use MAC as identifier
-    firstName: "Hotspot",
-    lastName: "User",
-    regionCode: payment.regionCode,
-    siteId: payment.siteId,
-    amount: payment.amount,
-    description: `Hotspot payment via ${payment.paymentMethod || "KopoKopo"}`,
+    type:          "MPESA",
+    customerType:  "hotspot",
+    customerId:    hotspotUser._id,
+    accountId:     hotspotUser.macAddress,
+    firstName:     "Hotspot",
+    lastName:      "User",
+    regionCode:    payment.regionCode,
+    siteId:        payment.siteId,
+    amount:        payment.amount,
+    description:   `Hotspot payment via ${payment.paymentMethod || "KopoKopo"}`,
     paymentMethod: payment.paymentMethod || "mpesa",
     mpesa: {
-      transactionId: receiptNumber,
-      phoneNumber: phoneNumber || payment.metadata?.phoneNumber,
+      transactionId:    receiptNumber,
+      phoneNumber:      phoneNumber || payment.metadata?.phoneNumber,
       accountReference: payment.kopokopoPaymentId,
-      transactionDate: transactionDate || new Date(),
+      transactionDate:  transactionDate || new Date(),
     },
-    status: "completed",
+    status:          "completed",
     relatedPaymentId: payment._id,
   });
 
-  // 5. Activate the hotspot user
-  const now = new Date();
+  // ─── 5. Calculate expiry ─────────────────────────────────────────────────────
+  const now    = new Date();
   const expiry = calculatePeriodEnd(now, packageDoc.period, packageDoc.periodUnit);
 
+  // ─── 6. Update HotspotUser in MongoDB ────────────────────────────────────────
   hotspotUser.activeSession = {
     packageId: packageDoc._id,
     startedAt: now,
     expiresAt: expiry,
-    isActive: true,
-    dataLimit: packageDoc.dataLimit,
+    isActive:  true,
+    dataLimit: packageDoc.dataLimit || null,
+    dataUsed:  0,
   };
-  await hotspotUser.save();
-
-  // 6. Create or enable RADIUS account
-  const radiusService = require("../services/radiusService");
-  const groupName = packageDoc.packageName.replace(/\s+/g, '_').toUpperCase();
-  const username = `hs_${hotspotUser.macAddress.replace(/[:-]/g, '')}`;
-
-  // Check if RADIUS account already exists
-  let radiusUserExists = false;
-  try {
-    const conn = await radiusService.getConnection();
-    const [rows] = await conn.query(
-      'SELECT 1 FROM radcheck WHERE username = ? LIMIT 1',
-      [username]
-    );
-    radiusUserExists = rows.length > 0;
-    conn.release();
-  } catch (e) {
-    console.error("RADIUS check error:", e);
+  hotspotUser.phoneNumber    = phoneNumber || hotspotUser.phoneNumber;
+  hotspotUser.paymentCounter = (hotspotUser.paymentCounter || 0) + 1;
+  hotspotUser.purchaseHistory.push({
+    packageId:     packageDoc._id,
+    purchasedAt:   now,
+    amount:        payment.amount,
+    transactionId: mpesaTransaction._id,
+  });
+  // Keep purchase history to last 20 entries
+  if (hotspotUser.purchaseHistory.length > 20) {
+    hotspotUser.purchaseHistory = hotspotUser.purchaseHistory.slice(-20);
   }
 
-  if (radiusUserExists) {
-    // Enable the account (move to active group)
-    await radiusService.enableAccount(username, groupName);
-    console.log(`   ✅ RADIUS account enabled: ${username}`);
-  } else {
-    // Create fresh hotspot account
-    const dataLimitMB = packageDoc.dataLimit || (packageDoc.fup?.enabled ? (packageDoc.fup.dataThresholdGB * 1024) : null);
-    const createResult = await radiusService.createHotspotAccount(
+  hotspotUser.kickedAt = null;
+  await hotspotUser.save();
+
+  // ─── 7. RADIUS: create or enable account ─────────────────────────────────────
+  const radiusService = require("../services/radiusService");
+  const groupName     = packageDoc.packageName.replace(/\s+/g, '_').toUpperCase();
+  const username      = `hs_${hotspotUser.macAddress.replace(/[:-]/g, '')}`;
+
+  try{
+    const conn   = await radiusService.getConnection();
+    await conn.query('DELETE FROM radcheck WHERE username = ?', [username]);
+    await conn.query('DELETE FROM radusergroup WHERE username = ?', [username]);
+    await conn.query('DELETE FROM radreply WHERE username = ?', [username]);
+    await conn.query('DELETE FROM user_billing_cycle WHERE username = ?', [username]);
+    await conn.query('DELETE FROM radacct WHERE username = ? AND acctstoptime IS NOT NULL', [username]);
+    conn.release();
+  }catch{
+    console.error("⚠️ RADIUS deletion error:", e.message);
+  }
+
+
+  
+
+  let radiusResult;
+ 
+    // Brand-new device — full account creation
+    const dataLimitMB = packageDoc.dataLimit ||
+      (packageDoc.fup?.enabled ? (packageDoc.fup.dataThresholdGB * 1024) : null);
+
+    radiusResult = await radiusService.createHotspotAccount(
       hotspotUser.macAddress,
       groupName,
       dataLimitMB,
       expiry
     );
-    if (!createResult.success) {
-      console.error("❌ RADIUS creation failed:", createResult.error);
+    if (!radiusResult.success) {
+      console.error("❌ RADIUS creation failed:", radiusResult.error);
       throw new Error("RADIUS account creation failed");
     }
     console.log(`   ✅ RADIUS account created: ${username}`);
+  
+
+try{
+  const mac = hotspotUser.macAddress;
+  let nasIp = payment.metadata?.nasIp;
+  const router = await Router.findOne({ ip: nasIp });
+  if(!router){
+    console.error("Could not find the router to kick out customer.");
+    return;
   }
-
-  // 7. Set billing cycle start
-  await radiusService.setBillingCycleStart(username, now);
-
-  // 8. Apply FUP if enabled
-  if (packageDoc.fup?.enabled) {
-    const quotaBytes = packageDoc.fup.dataThresholdGB * 1024 * 1024 * 1024;
-    await radiusService.enableFUPForCustomer(username, quotaBytes);
-    console.log(`   ✅ FUP enabled (${packageDoc.fup.dataThresholdGB} GB)`);
-  }
-
-  // 9. Disconnect the device (force reconnect with new settings)
-  await radiusService.killUserSession(username);
-  console.log(`   ✅ Session disconnected (reconnect will give internet)`);
-
-
-  const mikrotikService = require("../services/mikrotikService");
-
-// Get the router for this site
-const router = await Router.findOne({ site: payment.siteId });
-if (!router) {
-    console.error("No router found for site");
-} else {
-    const siteObj = {
-        router: {
-            ip: router.ip,
-            username: router.username,
-            password: router.password,
-            port: router.apiPort || 8728,
-            apiType: router.apiType || "api",
-        }
-    };
-    
-    // Add to hotspot active users (allows internet immediately)
-    await mikrotikService.addHotspotActiveUser(siteObj, {
-        name: username,           // hs_MACADDRESS
-        password: password,       // from RADIUS
-        macAddress: hotspotUser.macAddress,
-        profile: packageGroupName, // e.g., "10MBPS_HOTSPOT"
-        routes: "yes",
-        limitUptime: packageDoc.period + packageDoc.periodUnit, // e.g., "1d"
-    });
+  const mikroticService = require("../services/mikroticService")
+await mikroticService.kickHotspotUser({ router }, mac);
+}catch{
+console.error("Could not kick session out")
 }
 
-  // 10. Create subscription transaction (debit of package price)
+
+  // ─── 10. Subscription transaction (debit) ────────────────────────────────────
   const secondaryTransaction = await Transaction.create({
-    type: "SUBSCRIPTION",
-    customerType: "hotspot",
-    customerId: hotspotUser._id,
-    accountId: hotspotUser.macAddress,
-    firstName: "Hotspot",
-    lastName: "User",
-    regionCode: payment.regionCode,
-    siteId: payment.siteId,
-    amount: -packageDoc.price,
-    description: `Hotspot activation via payment - ${packageDoc.packageName}`,
-    paymentMethod: payment.paymentMethod || "mpesa",
-    packageId: packageDoc._id,
+    type:               "SUBSCRIPTION",
+    customerType:       "hotspot",
+    customerId:         hotspotUser._id,
+    accountId:          hotspotUser.macAddress,
+    firstName:          "Hotspot",
+    lastName:           "User",
+    regionCode:         payment.regionCode,
+    siteId:             payment.siteId,
+    amount:             -packageDoc.price,
+    description:        `Hotspot activation — ${packageDoc.packageName}`,
+    paymentMethod:      payment.paymentMethod || "mpesa",
+    packageId:          packageDoc._id,
     relatedTransactionId: mpesaTransaction._id,
-    status: "completed",
-    relatedPaymentId: payment._id,
+    status:             "completed",
+    relatedPaymentId:   payment._id,
   });
 
   mpesaTransaction.relatedTransactionId = secondaryTransaction._id;
   await mpesaTransaction.save();
 
-  // 11. Log system event
+  // ─── 12. System log ──────────────────────────────────────────────────────────
   await SystemLog.create({
-    eventType: "hotspot_activation",
-    severity: "info",
+    eventType:  "hotspot_activation",
+    severity:   "info",
     regionCode: payment.regionCode,
     entityType: "hotspot_user",
-    entityId: hotspotUser._id,
-    accountId: hotspotUser.macAddress,
-    message: `Hotspot user ${hotspotUser.macAddress} activated with package ${packageDoc.packageName} until ${expiry.toISOString()}`,
+    entityId:   hotspotUser._id,
+    accountId:  hotspotUser.macAddress,
+    message:    `Hotspot ${hotspotUser.macAddress} activated — ${packageDoc.packageName} until ${expiry.toISOString()}`,
     details: {
-      amount: payment.amount,
-      receipt: receiptNumber,
+      amount:      payment.amount,
+      receipt:     receiptNumber,
       packageName: packageDoc.packageName,
-      expiresAt: expiry,
-      activatedFrom: "payment_webhook"
+      expiresAt:   expiry,
+      username,
+      isNewUser:   !payment.customerId, // was it a brand-new device?
+      activatedFrom: "payment_webhook",
     },
-    success: true,
+    success:              true,
     relatedTransactionId: mpesaTransaction._id,
-    relatedPaymentId: payment._id,
+    relatedPaymentId:     payment._id,
   });
 
-  console.log(`   ✅ Hotspot user fully activated`);
+  console.log(`   ✅ Hotspot user fully activated: ${username} until ${expiry.toISOString()}`);
 }
-
 // ============================================
 // CHECK PAYMENT STATUS
 // ============================================
@@ -1123,7 +1652,7 @@ exports.getTransactionsHistory = asyncHandler(async (req, res, next) => {
   const { customerId } = req.params;
   const { page = 1, limit = 20 } = req.query;
 
-  const transactions = await Transaction.find({ customerId })
+  const transactions = await Transaction.find({ customerId: customerId, type: { $nin: ['MPESA', 'MOVED_PAYMENT', 'CASH_DEPOSIT'] } })
     .sort({ processedAt: -1 })
     .limit(limit * 1)
     .skip((page - 1) * limit);
@@ -1231,6 +1760,19 @@ exports.resolvePayment = asyncHandler(async (req, res, next) => {
 
   let payment = await Payment.findOne({ mpesaReceiptNumber: receiptNumber });
   if (payment) {
+    const unprocessedConfirm = await UnprocessedPayment.findOne({
+      receiptNumber
+    });
+
+    if(unprocessedConfirm.status === 'new'){
+      unprocessedConfirm.status = "matched";
+      unprocessedConfirm.matchedWith = {
+        type: payment.customerType === 'pppoe' ? "Customer" : "Lead",
+        id: payment.customerType === 'pppoe' ? payment.customerId : payment.leadId,
+      };
+    }
+
+    await unprocessedConfirm.save();
     return next(
       new ErrorResponse("This receipt has already been processed", 400),
     );
@@ -1249,6 +1791,10 @@ exports.resolvePayment = asyncHandler(async (req, res, next) => {
   const CustomerModel = customerType === "pppoe" ? Customer : HotspotUser;
   const customer = await CustomerModel.findById(customerId);
   if (!customer) return next(new ErrorResponse("Customer not found", 404));
+
+  if(customer.isChild && customer.shared.expiryWithParent){
+    return next(new ErrorResponse("Customer is a child who shares expiry with parent, resolve to parent instead.", 404));
+  }
 
   let packageId;
   if (customerType === "pppoe") {
@@ -1283,18 +1829,21 @@ exports.resolvePayment = asyncHandler(async (req, res, next) => {
     resolutionStatus: "processed",
   });
 
+  unprocessed.status = "matched";
+  unprocessed.matchedWith = {
+    type: "Customer",
+    id: customer._id,
+  };
+  
+  await unprocessed.save();
+
   await processManualPayment(payment, {
     amount: unprocessed.amount,
     phoneNumber: unprocessed.phoneNumber,
     transactionDate: unprocessed.transactionDate,
   });
 
-  unprocessed.status = "matched";
-  unprocessed.matchedWith = {
-    type: "Customer",
-    id: customer._id,
-  };
-  await unprocessed.save();
+
 
   res.json({
     success: true,
@@ -1303,305 +1852,633 @@ exports.resolvePayment = asyncHandler(async (req, res, next) => {
   });
 });
 
+async function processManualPayment(payment, mpesaData) {
+  console.log("⚙️ [processManualPayment] Starting for payment:", payment._id);
+  const customer = await Customer.findById(payment.customerId).populate("subscription.packageId");
+  const packageDoc = await Package.findById(payment.packageId);
+  if (!customer || !packageDoc) throw new Error("Customer or Package not found");
+
+  const currentBalance = customer.billing?.balance || 0;
+  const newBalance = currentBalance + payment.amount;
+  const now = new Date();
+  const isActive = customer.subscription?.status === "active" || customer.subscription?.status === "suspended";
+  const packagePrice = packageDoc.price;
+  let shouldActivateNow = false;
+  let waitingFlag = false;
+
+  const radiusService = require("../services/radiusService");
+
+  if (!isActive) {
+    const hasActiveSession = await radiusService.hasActiveSession(customer.pppoe.username);
+    if (hasActiveSession && newBalance >= packagePrice) {
+      shouldActivateNow = true;
+      waitingFlag = false;
+    } else if (!hasActiveSession && newBalance >= packagePrice) {
+      shouldActivateNow = false;
+      waitingFlag = true;
+    }
+  }
+
+  // Create MPESA transaction (for audit)
+  const mpesaTransaction = await Transaction.create({
+    type: "MPESA",
+    customerType: "pppoe",
+    customerId: customer._id,
+    accountId: payment.accountId,
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    regionCode: payment.regionCode,
+    siteId: payment.siteId,
+    amount: payment.amount,
+    description: "M-Pesa direct payment (manual resolution)",
+    paymentMethod: "mpesa",
+    mpesa: {
+      transactionId: payment.mpesaReceiptNumber,
+      phoneNumber: mpesaData.phoneNumber,
+      accountReference: payment.stkID,
+      transactionDate: parseMpesaDate(mpesaData.transactionDate),
+    },
+    status: "completed",
+    relatedPaymentId: payment._id,
+  });
+
+  // Wallet transaction (always)
+  const walletTransaction = await Transaction.create({
+    type: "WALLET",
+    customerType: "pppoe",
+    customerId: customer._id,
+    accountId: payment.accountId,
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    regionCode: payment.regionCode,
+    siteId: payment.siteId,
+    amount: payment.amount,
+    description: `Funds added to wallet (manual resolution), initialBalance: ${currentBalance}, newBalance: ${newBalance}`,
+    paymentMethod: "mpesa",
+    relatedTransactionId: mpesaTransaction._id,
+    status: "completed",
+    relatedPaymentId: payment._id,
+  });
+  mpesaTransaction.relatedTransactionId = walletTransaction._id;
+  await mpesaTransaction.save();
+
+  // Prepare database update
+  let subscriptionUpdate = {};
+  if (shouldActivateNow) {
+    const afterDeduction = newBalance - packagePrice;
+    let newExpiry = calculatePeriodEnd(now, packageDoc.period, packageDoc.periodUnit);
+    if (customer.freeExtensionDays && customer.freeExtensionDays > 0) {
+      newExpiry = new Date(newExpiry);
+      newExpiry.setDate(newExpiry.getDate() - customer.freeExtensionDays);
+      if (newExpiry < now) newExpiry = now;
+    }
+    subscriptionUpdate = {
+      'subscription.status': 'active',
+      'subscription.activatedAt': now,
+      'subscription.expiresAt': newExpiry,
+      'subscription.packageId': packageDoc._id,
+      'billing.balance': afterDeduction,
+      'billing.lastPaymentDate': now,
+      waitingForSession: false,
+      freeExtensionDays: 0,
+    };
+    if (!customer.renewals) customer.renewals = [];
+    // We'll push renewal later after update (or we can push via direct update, but simpler to do after)
+  } else {
+    subscriptionUpdate = {
+      'billing.balance': newBalance,
+      'billing.lastPaymentDate': now,
+      waitingForSession: waitingFlag,
+    };
+  }
+
+  // Apply direct update to database
+  await Customer.updateOne({ _id: customer._id }, { $set: subscriptionUpdate });
+
+  // Update in-memory customer for further use (logs, SMS)
+  if (shouldActivateNow) {
+    customer.subscription.status = 'active';
+    customer.subscription.expiresAt = subscriptionUpdate['subscription.expiresAt'];
+    customer.billing.balance = subscriptionUpdate['billing.balance'];
+    customer.waitingForSession = false;
+    await radiusService.removePendingActivation(customer.pppoe.username); 
+    // Add renewal record
+    if (!customer.renewals) customer.renewals = [];
+    customer.renewals.push({ dateRenewed: now, method: "manual", amount: payment.amount });
+    // Create SUBSCRIPTION transaction
+    const subscriptionTransaction = await Transaction.create({
+      type: "SUBSCRIPTION",
+      customerType: "pppoe",
+      customerId: customer._id,
+      accountId: payment.accountId,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      regionCode: payment.regionCode,
+      siteId: payment.siteId,
+      amount: -packagePrice,
+      description: `Subscription activated via manual resolution (immediate)`,
+      paymentMethod: "mpesa",
+      packageId: packageDoc._id,
+      relatedTransactionId: mpesaTransaction._id,
+      status: "completed",
+      relatedPaymentId: payment._id,
+    });
+
+    await Transaction.findByIdAndDelete(walletTransaction._id);
+    mpesaTransaction.relatedTransactionId = subscriptionTransaction._id;
+    await mpesaTransaction.save();
+
+
+    // Enable RADIUS
+    const groupName = packageDoc.packageName.replace(/\s+/g, "_").toUpperCase();
+    await radiusService.enableAccount(customer.pppoe.username, groupName);
+    await radiusService.setBillingCycleStart(customer.pppoe.username, new Date());
+
+    if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+      // Propagate to children that share expiry
+      const children = await Customer.find({ _id: { $in: customer.sharedExpiry } }).populate('subscription.packageId');
+      for (const child of children) {
+        child.subscription.expiresAt = newExpiry; // newExpiry is the parent's new expiry
+        child.subscription.status = 'active';
+        if (!child.subscription.activatedAt) child.subscription.activatedAt = now;
+        await child.save();
+        const childGroupName = child.subscription.packageId.packageName.replace(/\s+/g, '_').toUpperCase();
+        await radiusService.enableAccount(child.pppoe.username, childGroupName);
+        await radiusService.setBillingCycleStart(child.pppoe.username, new Date());
+        // Log child activation (optional)
+      }
+    }
+
+
+    const voucherData = {
+      customerId: customer._id,
+      packageId: '6a311253de22d46f9b16b375',
+      voucherAmount: 3,
+      createdBy: null,
+      regionCode: customer.regionCode,
+      rollbackOnSmsFailure: true,
+    };
+
+    try{
+await generateAndSendVouchers(voucherData);
+}catch(error){
+console.log("Could not generate bonus vouchers for customer", error);
+}
+  } else {
+    customer.billing.balance = subscriptionUpdate['billing.balance'];
+    customer.waitingForSession = waitingFlag;
+    await radiusService.addPendingActivation(customer.pppoe.username); 
+  }
+  customer.billing.lastPaymentDate = now;
+
+  // System log
+  if (shouldActivateNow) {
+    await SystemLog.create({
+      eventType: "subscription_renewal",
+      severity: "info",
+      regionCode: payment.regionCode,
+      entityType: "customer",
+      entityId: customer._id,
+      accountId: payment.accountId,
+      message: `Subscription activated via manual resolution (active session)`,
+      details: { amount: payment.amount, packagePrice, newBalance: customer.billing.balance, newExpiry: subscriptionUpdate['subscription.expiresAt'] },
+      success: true,
+    });
+  } else {
+    await SystemLog.create({
+      eventType: "payment_received",
+      severity: "info",
+      regionCode: payment.regionCode,
+      entityType: "customer",
+      entityId: customer._id,
+      accountId: payment.accountId,
+      message: `Manual resolution payment added to wallet for ${payment.accountId}${waitingFlag ? ' (waiting for session)' : ''}`,
+      details: { amount: payment.amount, newBalance: subscriptionUpdate['billing.balance'], waitingFlag },
+      success: true,
+    });
+  }
+
+  // SMS (fire and forget)
+  const smsTemplateService = require("../services/smsTemplateService");
+  try {
+    if (shouldActivateNow) {
+      await smsTemplateService.sendUsingTemplate(
+        'payment_renewal',
+        customer.phoneNumber,
+        { customerName: `${customer.firstName} ${customer.lastName}`, amount: payment.amount, expiryDate: customer.subscription.expiresAt.toLocaleDateString() },
+        { customerId: customer._id, accountId: customer.accountId, type: 'subscription_renewal', regionCode: payment.regionCode }
+      );
+    } else {
+      await smsTemplateService.sendUsingTemplate(
+        'payment_wallet',
+        customer.phoneNumber,
+        { customerName: `${customer.firstName} ${customer.lastName}`, amount: payment.amount, newBalance: customer.billing.balance },
+        { customerId: customer._id, accountId: customer.accountId, type: 'payment_confirmation', regionCode: payment.regionCode }
+      );
+    }
+  } catch (err) {
+    console.log("SMS not sent:", err.message);
+  }
+}
+
+
 /**
  * @desc    Move/Transfer payment from one customer to another
  * @route   POST /api/payments/:paymentId/move
  * @access  Private (Admin only)
+ *
+ * 1. Deduct the payment amount from the source customer's balance.
+ * 2. If the source was using that payment to stay active, recalc their status.
+ * 3. Create a new payment for the target and process it.
+ * 4. Delete the original payment and its associated transactions.
  */
 exports.movePayment = asyncHandler(async (req, res, next) => {
   const { paymentId } = req.params;
   const { targetCustomerId, reason } = req.body;
 
-  if (!targetCustomerId)
-    return next(new ErrorResponse("Target customer ID is required", 400));
-  if (!reason)
-    return next(
-      new ErrorResponse("Reason for payment transfer is required", 400),
-    );
+  if (!targetCustomerId) return next(new ErrorResponse("Target customer ID required", 400));
+  if (!reason) return next(new ErrorResponse("Reason required", 400));
 
-  const payment = await Payment.findById(paymentId);
-  if (!payment) return next(new ErrorResponse("Payment not found", 404));
-  if (payment.status === "failed")
-    return next(new ErrorResponse("Cannot move failed payments", 400));
+  const originalPayment = await Payment.findById(paymentId);
+  if (!originalPayment) return next(new ErrorResponse("Payment not found", 404));
+  if (originalPayment.status !== "completed")
+    return next(new ErrorResponse("Only completed payments can be moved", 400));
 
-  const sourceCustomer = await Customer.findById(payment.customerId).populate(
-    "subscription.packageId",
-  );
-  if (!sourceCustomer)
-    return next(new ErrorResponse("Source customer not found", 404));
+  const sourceCustomer = await Customer.findById(originalPayment.customerId).populate("subscription.packageId");
+  const targetCustomer = await Customer.findById(targetCustomerId).populate("subscription.packageId");
+  if (!sourceCustomer || !targetCustomer)
+    return next(new ErrorResponse("Customer not found", 404));
 
-  const targetCustomer = await Customer.findById(targetCustomerId).populate(
-    "subscription.packageId",
-  );
-  if (!targetCustomer)
-    return next(new ErrorResponse("Target customer not found", 404));
 
-  if (sourceCustomer._id.toString() === targetCustomer._id.toString()) {
-    return next(new ErrorResponse("Cannot move payment to same customer", 400));
+  if(targetCustomer.isChild && targetCustomer.shared.expiryWithParent){
+    return next(new ErrorResponse("This child shares due date with parent, deposit to parent instead.", 400));
   }
 
-  const site = await Site.findById(sourceCustomer.siteId).select(
-    "+router.password",
-  );
+  if (sourceCustomer._id.toString() === targetCustomer._id.toString())
+    return next(new ErrorResponse("Cannot move to same customer", 400));
+
+  // ---- 1. Find original MPESA transaction and secondary transaction ----
+  const mpesaTxn = await Transaction.findOne({
+    $or: [
+      { "mpesa.transactionId": originalPayment.mpesaReceiptNumber, type: { $in: ["MPESA", "CASH_DEPOSIT"] } },
+      { type: "MOVED_PAYMENT", relatedPaymentId: originalPayment._id }
+    ]
+  });
+  let secondaryTxn;
+  let wasSubscription = false;
+  let sourcePackagePrice = 0;
+  if (mpesaTxn) {
+    secondaryTxn = await Transaction.findOne({ relatedTransactionId: mpesaTxn._id, type: { $in: ["SUBSCRIPTION", "WALLET"] } });
+    if (secondaryTxn) {
+      wasSubscription = secondaryTxn.type === "SUBSCRIPTION";
+      if (wasSubscription && secondaryTxn.packageId) {
+        const pkg = await Package.findById(secondaryTxn.packageId);
+        if (pkg) sourcePackagePrice = pkg.price;
+      }
+    }
+  }
+
+  const paymentAmount = originalPayment.amount;
   const now = new Date();
 
-  console.log(`\n💸 Moving payment ${payment.mpesaReceiptNumber || paymentId}`);
-  console.log(
-    `   From: ${sourceCustomer.accountId} (${sourceCustomer.firstName} ${sourceCustomer.lastName})`,
-  );
-  console.log(
-    `   To: ${targetCustomer.accountId} (${targetCustomer.firstName} ${targetCustomer.lastName})`,
-  );
-  console.log(`   Amount: KES ${payment.amount}`);
-  console.log(`   Reason: ${reason}`);
-
-  // Find linked transactions
-  const mpesaTxn = await Transaction.findOne({
-    "mpesa.transactionId": payment.mpesaReceiptNumber,
-    type: "MPESA",
-  });
-  if (!mpesaTxn) {
-    return next(new ErrorResponse("MPESA transaction not found", 400));
-  }
-
-  const secondaryTxn = await Transaction.findOne({
-    relatedTransactionId: mpesaTxn._id,
-    type: { $in: ["SUBSCRIPTION", "WALLET"] },
-  });
-  if (!secondaryTxn) {
-    return next(new ErrorResponse("Secondary transaction not found", 400));
-  }
-
-  // Reverse source customer's financial impact
-  let reversalResult = { suspended: false, balanceAdjusted: false };
-  const wasSubscription = secondaryTxn.type === "SUBSCRIPTION";
-  const wasWallet = secondaryTxn.type === "WALLET";
-
+  // ---- 2. Reverse the effect on the source customer ----
   if (wasSubscription) {
-    const activationTime = sourceCustomer.subscription.activatedAt;
-    const paymentTime = payment.stkPush?.initiatedAt || payment.createdAt;
-    const timeDiff = Math.abs(activationTime - paymentTime);
-    const isActivation = timeDiff < 1000 * 60 * 60;
-
-    if (isActivation) {
-      sourceCustomer.subscription.status = "expired";
-      sourceCustomer.subscription.expiresAt = now;
-      await sourceCustomer.save();
-      reversalResult.suspended = true;
-
-      try {
-        const radiusService = require("../services/radiusService");
-        await radiusService.disableAccount(sourceCustomer.pppoe.username);
-        console.log(`   ✅ Disabled in RADIUS`);
-      } catch (err) {
-        console.error(`   ⚠️ RADIUS disable failed: ${err.message}`);
-      }
-    } else {
-      sourceCustomer.billing.balance += payment.amount;
-      await sourceCustomer.save();
-      reversalResult.balanceAdjusted = true;
-      console.log(
-        `   📊 Payment was a renewal, added ${payment.amount} back to balance. New balance: ${sourceCustomer.billing.balance}`,
-      );
+    // Payment was used to activate/renew – revert to expired
+    const remainder = paymentAmount - sourcePackagePrice;
+    sourceCustomer.subscription.status = "expired";
+    sourceCustomer.subscription.expiresAt = now; // immediate expiry
+    if (remainder > 0) {
+      sourceCustomer.billing.balance -= remainder;
+      if (sourceCustomer.billing.balance < 0) sourceCustomer.billing.balance = 0;
     }
-  } else if (wasWallet) {
-    sourceCustomer.billing.balance -= payment.amount;
     await sourceCustomer.save();
-    reversalResult.balanceAdjusted = true;
-    console.log(
-      `   📊 Payment was wallet top-up, subtracted ${payment.amount} from balance. New balance: ${sourceCustomer.billing.balance}`,
-    );
+
+    // Disable RADIUS
+    try {
+      const radiusService = require("../services/radiusService");
+      await radiusService.disableAccount(sourceCustomer.pppoe.username);
+    } catch (err) {
+      console.error("RADIUS disable failed:", err.message);
+    }
+  } else {
+    // Wallet top‑up – subtract the full amount
+    sourceCustomer.billing.balance -= paymentAmount;
+    if (sourceCustomer.billing.balance < 0) sourceCustomer.billing.balance = 0;
+    await sourceCustomer.save();
   }
 
-  // Update transactions to target customer
-  const targetFields = {
+  // ---- 3. Delete the original payment's linked transactions ----
+
+  if(secondaryTxn && secondaryTxn._id){
+    await Transaction.findByIdAndDelete(secondaryTxn._id)
+  }
+  if (mpesaTxn) {
+    await Transaction.findByIdAndDelete(mpesaTxn._id)
+  }
+
+  // ---- 4. Create a new payment for the target (but do NOT delete original yet) ----
+  const newPaymentData = {
     customerId: targetCustomer._id,
     accountId: targetCustomer.accountId,
-    firstName: targetCustomer.firstName,
-    lastName: targetCustomer.lastName,
+    amount: paymentAmount,
+    paymentMethod: originalPayment.paymentMethod,
+    status: "completed",
+    completedAt: new Date(),
+    source: "payment_transfer",
+    mpesaReceiptNumber: originalPayment.mpesaReceiptNumber,
+    stkID: `TRANSFER-${Date.now()}`,
+    checkoutRequestId: `TRANSFER-${Date.now()}`,
+    customerType: "pppoe",
     regionCode: targetCustomer.regionCode,
     siteId: targetCustomer.siteId,
-  };
-
-  mpesaTxn.set(targetFields);
-  mpesaTxn.description = `M-Pesa payment transferred from ${sourceCustomer.accountId}`;
-  mpesaTxn.notes =
-    (mpesaTxn.notes || "") +
-    `\nTransferred to ${targetCustomer.accountId} on ${now.toISOString()}. Reason: ${reason}`;
-  await mpesaTxn.save();
-
-  const targetPackage = targetCustomer.subscription?.packageId;
-  if (!targetPackage) {
-    return next(
-      new ErrorResponse("Target customer has no package assigned", 400),
-    );
-  }
-
-  const targetWasExpired = targetCustomer.subscription.status === "expired";
-  let newSecondaryType, newAmount, newDescription;
-
-  if (targetWasExpired) {
-    newSecondaryType = "SUBSCRIPTION";
-    newAmount = -targetPackage.price;
-    newDescription = `Subscription activation (payment transferred from ${sourceCustomer.accountId})`;
-  } else {
-    newSecondaryType = "WALLET";
-    newAmount = payment.amount;
-    newDescription = `Wallet credit (payment transferred from ${sourceCustomer.accountId})`;
-  }
-
-  secondaryTxn.set(targetFields);
-  secondaryTxn.type = newSecondaryType;
-  secondaryTxn.amount = -Math.abs(newAmount);
-  secondaryTxn.description = newDescription;
-  secondaryTxn.notes =
-    (secondaryTxn.notes || "") +
-    `\nTransferred to ${targetCustomer.accountId} on ${now.toISOString()}. Reason: ${reason}`;
-  if (newSecondaryType === "SUBSCRIPTION") {
-    secondaryTxn.packageId = targetPackage._id;
-  } else {
-    secondaryTxn.packageId = undefined;
-  }
-  await secondaryTxn.save();
-
-  // Update payment record
-  payment.metadata = payment.metadata || {};
-  payment.metadata.transferHistory = payment.metadata.transferHistory || [];
-  payment.metadata.transferHistory.push({
-    fromCustomerId: sourceCustomer._id,
-    fromAccountId: sourceCustomer.accountId,
-    toCustomerId: targetCustomer._id,
-    toAccountId: targetCustomer.accountId,
-    transferredAt: now,
-    transferredBy: req.session.userId,
-    reason,
-    originalSecondaryType: wasSubscription ? "SUBSCRIPTION" : "WALLET",
-    newSecondaryType,
-  });
-
-  payment.customerId = targetCustomer._id;
-  payment.accountId = targetCustomer.accountId;
-  payment.regionCode = targetCustomer.regionCode;
-  payment.siteId = targetCustomer.siteId;
-  payment.transactionId = secondaryTxn._id;
-  await payment.save();
-
-  // Apply effect to target customer
-  if (newSecondaryType === "SUBSCRIPTION") {
-    let periodEnd = calculatePeriodEnd(
-      now,
-      targetPackage.period,
-      targetPackage.periodUnit,
-    );
-    if (targetCustomer.freeExtensionDays && targetCustomer.freeExtensionDays > 0) {
-      periodEnd = new Date(periodEnd);
-      periodEnd.setDate(periodEnd.getDate() - targetCustomer.freeExtensionDays);
-      if (periodEnd < now) periodEnd = now;
-      targetCustomer.freeExtensionDays = 0;
-    }
-    const paymentDate = payment.stkPush?.initiatedAt || payment.createdAt;
-    const paymentAgeDays = Math.floor(
-      (now - paymentDate) / (1000 * 60 * 60 * 24),
-    );
-    if (paymentAgeDays > 3) {
-      periodEnd = new Date(periodEnd);
-      periodEnd.setDate(periodEnd.getDate() - paymentAgeDays);
-      console.log(
-        `   ⏳ Adjusted expiry by ${paymentAgeDays} days due to payment age.`,
-      );
-    }
-
-    targetCustomer.subscription.status = "active";
-    targetCustomer.subscription.activatedAt =
-      targetCustomer.subscription.activatedAt || now;
-    targetCustomer.subscription.expiresAt = periodEnd;
-    console.log(
-      `   ✅ Target activated, new expiry: ${periodEnd.toISOString()}`,
-    );
-
-    if (site) {
-      try {
-        const radiusService = require("../services/radiusService");
-        const packageName = targetPackage.packageName
-          .replace(/\s+/g, "_")
-          .toUpperCase();
-        await radiusService.enableAccount(
-          targetCustomer.pppoe.username,
-          packageName,
-        );
-        console.log(`   ✅ Activated in RADIUS`);
-      } catch (err) {
-        console.error(`   ⚠️ RADIUS activation failed: ${err.message}`);
-      }
-    }
-  } else {
-    targetCustomer.billing.balance += payment.amount;
-    console.log(
-      `   ✅ Wallet top-up, added ${payment.amount} to balance. New balance: ${targetCustomer.billing.balance}`,
-    );
-  }
-
-  targetCustomer.billing.lastPaymentDate = now;
-  await targetCustomer.save();
-
-  await SystemLog.create({
-    eventType: "payment_transferred",
-    severity: "warning",
-    regionCode: targetCustomer.regionCode,
-    entityType: "payment",
-    entityId: payment._id,
-    message: `Payment KES ${payment.amount} transferred from ${sourceCustomer.accountId} to ${targetCustomer.accountId}`,
-    details: {
-      paymentId: payment._id,
-      mpesaCode: payment.mpesaReceiptNumber,
-      amount: payment.amount,
-      fromCustomer: {
-        id: sourceCustomer._id,
+    packageId: targetCustomer.subscription?.packageId,
+    metadata: {
+      transferredFrom: {
+        customerId: sourceCustomer._id,
         accountId: sourceCustomer.accountId,
-        name: `${sourceCustomer.firstName} ${sourceCustomer.lastName}`,
-      },
-      toCustomer: {
-        id: targetCustomer._id,
-        accountId: targetCustomer.accountId,
-        name: `${targetCustomer.firstName} ${targetCustomer.lastName}`,
+        originalPaymentId: originalPayment._id,
       },
       reason,
-      originalSecondaryType: wasSubscription ? "SUBSCRIPTION" : "WALLET",
-      newSecondaryType,
-      reversal: reversalResult,
     },
-    triggeredBy: req.session.userId,
+  };
+
+  const newPayment = await Payment.create(newPaymentData);
+
+  // ---- 5. Apply the payment to the target (wallet + possible activation) ----
+  await processSuccessfulPaymentForTransfer(newPayment, targetCustomer, {
+    receiptNumber: originalPayment.mpesaReceiptNumber,
+    transactionDate: new Date(),
+    phoneNumber: originalPayment.stkPush?.phoneNumber || targetCustomer.phoneNumber,
+  });
+
+  // ---- 6. NOW delete the original payment (after success) ----
+  await originalPayment.deleteOne();
+
+  // ---- 7. Log the transfer ----
+  await SystemLog.create({
+    eventType: "payment_transferred",
+    severity: "info",
+    regionCode: targetCustomer.regionCode,
+    entityType: "payment",
+    entityId: newPayment._id,
+    message: `Payment KES ${paymentAmount} moved from ${sourceCustomer.accountId} to ${targetCustomer.accountId}. Source ${wasSubscription ? "expired" : "balance reduced"}.`,
+    details: {
+      originalPaymentId: originalPayment._id,
+      newPaymentId: newPayment._id,
+      amount: paymentAmount,
+      fromCustomer: sourceCustomer.accountId,
+      toCustomer: targetCustomer.accountId,
+      reason,
+      sourceNewBalance: sourceCustomer.billing.balance,
+      sourceStatus: sourceCustomer.subscription.status,
+    },
+    triggeredBy: req.user?.id || req.session?.userId,
     success: true,
   });
 
-  console.log(`\n✅ Payment transfer complete!`);
-  res.status(200).json({
+  sourceCustomer.notes.push({
+    note: `Payment ${newPaymentData.mpesaReceiptNumber ? `${newPaymentData.mpesaReceiptNumber}` : "RECEIPT_N/A" } moved from this account to ${targetCustomer.accountId}`,
+    addedBy: req.session.userId,
+    addedAt: new Date(),
+  });
+
+  targetCustomer.notes.push({
+    note: `Payment: ${newPaymentData.mpesaReceiptNumber ? `${newPaymentData.mpesaReceiptNumber}` : "RECEIPT_N/A" } received by moving from ${sourceCustomer.accountId}`,
+    addedBy: req.session.userId,
+    addedAt: new Date(),
+  });
+
+  await sourceCustomer.save();
+  await targetCustomer.save();
+
+  res.json({
     success: true,
-    message: `Payment transferred successfully from ${sourceCustomer.accountId} to ${targetCustomer.accountId}`,
+    message: `Payment of KES ${paymentAmount} moved to ${targetCustomer.accountId}`,
     data: {
-      payment: {
-        id: payment._id,
-        amount: payment.amount,
-        mpesaCode: payment.mpesaReceiptNumber,
-      },
       source: {
         customerId: sourceCustomer._id,
         accountId: sourceCustomer.accountId,
-        name: `${sourceCustomer.firstName} ${sourceCustomer.lastName}`,
+        newBalance: sourceCustomer.billing.balance,
         status: sourceCustomer.subscription.status,
-        reversed: reversalResult,
       },
       target: {
         customerId: targetCustomer._id,
         accountId: targetCustomer.accountId,
-        name: `${targetCustomer.firstName} ${targetCustomer.lastName}`,
-        status: targetCustomer.subscription.status,
-        expiresAt: targetCustomer.subscription.expiresAt,
-        balance: targetCustomer.billing.balance,
+        newPaymentId: newPayment._id,
       },
     },
   });
 });
+
+/**
+ * Helper: Apply a completed payment to a customer
+ * (same logic as processSuccessfulPayment without creating extra MPESA tx)
+ */
+async function processSuccessfulPaymentForTransfer(payment, customer, webhookData) {
+  const { receiptNumber, transactionDate, phoneNumber } = webhookData;
+
+  const packageDoc = await Package.findById(customer.subscription.packageId);
+  if (!packageDoc) throw new Error("Customer has no package");
+
+  const currentBalance = customer.billing?.balance || 0;
+  const newBalance = currentBalance + payment.amount;
+  const now = new Date();
+  const isActive = customer.subscription?.status === "active" || customer.subscription?.status === "suspended";
+  const packagePrice = packageDoc.price;
+  let shouldActivateNow = false;
+  let waitingFlag = false;
+
+  const radiusService = require("../services/radiusService");
+
+  if (!isActive) {
+    const hasActiveSession = await radiusService.hasActiveSession(customer.pppoe.username);
+    if (hasActiveSession && newBalance >= packagePrice) {
+      shouldActivateNow = true;
+      waitingFlag = false;
+    } else if (!hasActiveSession && newBalance >= packagePrice) {
+      shouldActivateNow = false;
+      waitingFlag = true;
+    }
+  }
+
+  // Create MPESA transaction (record of transferred payment)
+  const mpesaTransaction = await Transaction.create({
+    type: "MOVED_PAYMENT",
+    customerType: "pppoe",
+    customerId: customer._id,
+    accountId: customer.accountId,
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    regionCode: payment.regionCode,
+    siteId: payment.siteId,
+    amount: payment.amount,
+    description: `Payment transferred - ${receiptNumber}`,
+    paymentMethod: "mpesa",
+    mpesa: {
+      transactionId: receiptNumber,
+      phoneNumber: phoneNumber || customer.phoneNumber,
+      accountReference: payment.stkID,
+      transactionDate: transactionDate || now,
+    },
+    status: "completed",
+    relatedPaymentId: payment._id,
+  });
+
+  // Wallet transaction
+  const walletTransaction = await Transaction.create({
+    type: "WALLET",
+    customerType: "pppoe",
+    customerId: customer._id,
+    accountId: customer.accountId,
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    regionCode: payment.regionCode,
+    siteId: payment.siteId,
+    amount: payment.amount,
+    description: `Funds added to wallet (payment transfer), initialBalance: ${currentBalance}, newBalance: ${newBalance}`,
+    paymentMethod: "mpesa",
+    relatedTransactionId: mpesaTransaction._id,
+    status: "completed",
+    relatedPaymentId: payment._id,
+  });
+  mpesaTransaction.relatedTransactionId = walletTransaction._id;
+  await mpesaTransaction.save();
+
+  // Prepare database update
+  let subscriptionUpdate = {};
+  if (shouldActivateNow) {
+    const afterDeduction = newBalance - packagePrice;
+    let newExpiry = calculatePeriodEnd(now, packageDoc.period, packageDoc.periodUnit);
+    if (customer.freeExtensionDays && customer.freeExtensionDays > 0) {
+      newExpiry = new Date(newExpiry);
+      newExpiry.setDate(newExpiry.getDate() - customer.freeExtensionDays);
+      if (newExpiry < now) newExpiry = now;
+    }
+    subscriptionUpdate = {
+      'subscription.status': 'active',
+      'subscription.activatedAt': now,
+      'subscription.expiresAt': newExpiry,
+      'subscription.packageId': packageDoc._id,
+      'billing.balance': afterDeduction,
+      'billing.lastPaymentDate': now,
+      waitingForSession: false,
+      freeExtensionDays: 0,
+    };
+  } else {
+    subscriptionUpdate = {
+      'billing.balance': newBalance,
+      'billing.lastPaymentDate': now,
+      waitingForSession: waitingFlag,
+    };
+  }
+
+  // Apply direct update
+  await Customer.updateOne({ _id: customer._id }, { $set: subscriptionUpdate });
+
+  // Update in-memory object
+  if (shouldActivateNow) {
+    customer.subscription.status = 'active';
+    customer.subscription.expiresAt = subscriptionUpdate['subscription.expiresAt'];
+    customer.billing.balance = subscriptionUpdate['billing.balance'];
+    customer.waitingForSession = false;
+    await radiusService.removePendingActivation(customer.pppoe.username); 
+    if (!customer.renewals) customer.renewals = [];
+    customer.renewals.push({ dateRenewed: now, method: "transfer", amount: payment.amount });
+    // Create SUBSCRIPTION transaction
+    const subscriptionTransaction = await Transaction.create({
+      type: "SUBSCRIPTION",
+      customerType: "pppoe",
+      customerId: customer._id,
+      accountId: customer.accountId,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      regionCode: payment.regionCode,
+      siteId: payment.siteId,
+      amount: -packagePrice,
+      description: `Subscription activation via payment transfer (immediate)`,
+      paymentMethod: "mpesa",
+      packageId: packageDoc._id,
+      relatedTransactionId: mpesaTransaction._id,
+      status: "completed",
+      relatedPaymentId: payment._id,
+    });
+
+    await Transaction.findByIdAndDelete(walletTransaction._id);
+
+    mpesaTransaction.relatedTransactionId = subscriptionTransaction._id;
+    await mpesaTransaction.save();
+
+    // Enable RADIUS
+    const groupName = packageDoc.packageName.replace(/\s+/g, "_").toUpperCase();
+    await radiusService.enableAccount(customer.pppoe.username, groupName);
+    await radiusService.setBillingCycleStart(customer.pppoe.username, new Date());
+
+    if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+      // Propagate to children that share expiry
+      const children = await Customer.find({ _id: { $in: customer.sharedExpiry } }).populate('subscription.packageId');
+      for (const child of children) {
+        child.subscription.expiresAt = newExpiry; // newExpiry is the parent's new expiry
+        child.subscription.status = 'active';
+        if (!child.subscription.activatedAt) child.subscription.activatedAt = now;
+        await child.save();
+        const childGroupName = child.subscription.packageId.packageName.replace(/\s+/g, '_').toUpperCase();
+        await radiusService.enableAccount(child.pppoe.username, childGroupName);
+        await radiusService.setBillingCycleStart(child.pppoe.username, new Date());
+        // Log child activation (optional)
+      }
+    }
+
+    const voucherData = {
+      customerId: customer._id,
+      packageId: '6a311253de22d46f9b16b375',
+      voucherAmount: 3,
+      createdBy: null,
+      regionCode: customer.regionCode,
+      rollbackOnSmsFailure: true,
+    };
+
+    try{
+await generateAndSendVouchers(voucherData);
+}catch(error){
+console.log("Could not generate bonus vouchers for customer", error);
+}
+  } else {
+    customer.billing.balance = subscriptionUpdate['billing.balance'];
+    customer.waitingForSession = waitingFlag;
+    await radiusService.addPendingActivation(customer.pppoe.username); 
+  }
+  customer.billing.lastPaymentDate = now;
+
+  // System log
+  if (shouldActivateNow) {
+    await SystemLog.create({
+      eventType: "subscription_renewal",
+      severity: "info",
+      regionCode: payment.regionCode,
+      entityType: "customer",
+      entityId: customer._id,
+      accountId: customer.accountId,
+      message: `Subscription activated via payment transfer (active session)`,
+      details: { amount: payment.amount, packagePrice, newBalance: customer.billing.balance, newExpiry: subscriptionUpdate['subscription.expiresAt'] },
+      success: true,
+    });
+  } else {
+    await SystemLog.create({
+      eventType: "payment_received",
+      severity: "info",
+      regionCode: payment.regionCode,
+      entityType: "customer",
+      entityId: customer._id,
+      accountId: customer.accountId,
+      message: `Payment transfer added to wallet for ${customer.accountId}${waitingFlag ? ' (waiting for session)' : ''}`,
+      details: { amount: payment.amount, newBalance: customer.billing.balance, waitingFlag },
+      success: true,
+    });
+  }
+
+  // SMS (commented out as in original)
+  // ...
+}
 
 /**
  * @desc    Move payment from child to parent account
@@ -1701,215 +2578,7 @@ exports.getPaymentTransferHistory = asyncHandler(async (req, res, next) => {
 // HELPER: Process manual payment (used by resolvePayment)
 // ============================================
 
-async function processManualPayment(payment, mpesaData) {
-  console.log("⚙️ [processManualPayment] Starting for payment:", payment._id);
-  try {
-    const customer = await (
-      payment.customerType === "pppoe" ? Customer : HotspotUser
-    ).findById(payment.customerId);
-    const packageDoc = await Package.findById(payment.packageId);
 
-    if (!customer || !packageDoc) {
-      throw new Error("Customer or Package not found");
-    }
-
-    const now = new Date();
-    const currentBalance = customer.billing?.balance || 0;
-    const totalAvailable = currentBalance + payment.amount;
-    const packagePrice = packageDoc.price;
-    const isActive = customer.subscription?.status !== "expired";
-
-    let transactionType;
-    let transactionDescription;
-    let shouldActivate = false;
-    let newBalance = currentBalance;
-    let smsMessage;
-
-    if (isActive) {
-      transactionType = "WALLET";
-      transactionDescription = "Funds added to wallet - Manual resolution";
-      newBalance = totalAvailable;
-      shouldActivate = false;
-      smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your payment of KES ${payment.amount} was successfully received. The amount has been added to your wallet balance and will be used to renew once your subscription expires. Your new skylink wallet balance is KES ${totalAvailable}. Thank you!`;
-    } else {
-      if (totalAvailable >= packagePrice) {
-        transactionType = "SUBSCRIPTION";
-        transactionDescription = `Subscription activated via manual resolution - ${packageDoc.packageName}`;
-        newBalance = totalAvailable - packagePrice;
-        shouldActivate = true;
-        smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your payment of KES ${payment.amount} was successfully received. The amount has been used to renew your subscription. Your new skylink wallet balance is KES ${newBalance}. Thank you!`;
-      } else {
-        transactionType = "WALLET";
-        transactionDescription =
-          "Insufficient balance - funds added to wallet (manual resolution)";
-        newBalance = totalAvailable;
-        shouldActivate = false;
-        smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your payment of KES ${payment.amount} was successfully received. The amount has been added to your wallet balance since it is not enough to renew your current subscription. Incase you want to change your subcsription, please contact 0111053184. Your new balance is KES ${totalAvailable}. Thank you!`;
-      }
-    }
-
-    const mpesaTransaction = await Transaction.create({
-      type: "MPESA",
-      customerType: payment.customerType,
-      customerId: customer._id,
-      accountId: payment.accountId,
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      regionCode: payment.regionCode,
-      siteId: payment.siteId,
-      amount: payment.amount,
-      description: "M-Pesa direct payment (manual resolution)",
-      paymentMethod: "mpesa",
-      mpesa: {
-        transactionId: payment.mpesaReceiptNumber,
-        phoneNumber: mpesaData.phoneNumber,
-        accountReference: payment.stkID,
-        transactionDate: parseMpesaDate(mpesaData.transactionDate),
-      },
-      status: "completed",
-    });
-
-    const secondTransaction = await Transaction.create({
-      type: transactionType,
-      customerType: payment.customerType,
-      customerId: customer._id,
-      accountId: payment.accountId,
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      regionCode: payment.regionCode,
-      siteId: payment.siteId,
-      amount:
-        transactionType === "SUBSCRIPTION" ? -packagePrice : -payment.amount,
-      description: transactionDescription,
-      paymentMethod: "mpesa",
-      packageId:
-        transactionType === "SUBSCRIPTION" ? packageDoc._id : undefined,
-      relatedTransactionId: mpesaTransaction._id,
-      status: "completed",
-    });
-
-    mpesaTransaction.relatedTransactionId = secondTransaction._id;
-    await mpesaTransaction.save();
-
-    customer.billing.balance = newBalance;
-    customer.billing.lastPaymentDate = now;
-
-    if (shouldActivate && customer.pppoe && customer.pppoe.username) {
-      const currentExpiry = customer.subscription.expiresAt;
-const baseDate = isActive && currentExpiry > now ? currentExpiry : now;
-let newExpiry = calculatePeriodEnd(baseDate, packageDoc.period, packageDoc.periodUnit);
-
-if (customer.freeExtensionDays && customer.freeExtensionDays > 0) {
-  const extensionDays = customer.freeExtensionDays;
-  newExpiry = new Date(newExpiry);
-  newExpiry.setDate(newExpiry.getDate() - extensionDays);
-  if (newExpiry < now) newExpiry = now;
-  customer.freeExtensionDays = 0;
-}
-customer.subscription.expiresAt = newExpiry;
-      customer.subscription.status = "active";
-      customer.subscription.activatedAt = now;
-      customer.renewals.push({
-        dateRenewed: now,
-        method: "manual",
-      });
-
-      await customer.save();
-      const site = await Site.findById(payment.siteId);
-      if (site) {
-        try {
-          await activateAccount(customer, packageDoc);
-          console.log("✅ RADIUS account activated");
-        } catch (err) {
-          console.error("⚠️ RADIUS activation failed:", err.message);
-        }
-      }
-    } else if (shouldActivate && payment.customerType === "hotspot") {
-      customer.activeSession = {
-        packageId: packageDoc._id,
-        startedAt: now,
-        expiresAt: calculatePeriodEnd(
-          now,
-          packageDoc.period,
-          packageDoc.periodUnit,
-        ),
-        dataLimit: packageDoc.dataLimit,
-        dataUsed: 0,
-        isActive: true,
-      };
-      customer.purchaseHistory.push({
-        packageId: packageDoc._id,
-        purchasedAt: now,
-        amount: payment.amount,
-        transactionId: mpesaTransaction._id,
-      });
-      await customer.save();
-    } else {
-      await customer.save();
-    }
-
-  // 5. Send SMS (optional – you already have mobileSasaService)
-  const smsTemplateService = require("../services/smsTemplateService")
-if(shouldActivate){
-  
-  await smsTemplateService.sendUsingTemplate(
-    'payment_renewal',
-    customer.phoneNumber,
-    {
-      customerName: `${customer.firstName} ${customer.lastName}`,
-      amount: payment.amount,
-      expiryDate: newExpiry.toLocaleDateString(),
-    },
-    { customerId: customer._id, accountId: customer.accountId, type: 'subscription_renewal', regionCode: payment.regionCode }
-  );
-}else{
-  const smsTemplateService = require('../services/smsTemplateService');
-// After computing newBalance and before the SMS log
-try {
-  await smsTemplateService.sendUsingTemplate(
-    'payment_wallet',
-    customer.phoneNumber,
-    {
-      customerName: `${customer.firstName} ${customer.lastName}`,
-      amount: payment.amount,
-      newBalance: newBalance,
-    },
-    { customerId: customer._id, accountId: customer.accountId, type: 'payment_confirmation', regionCode: payment.regionCode }
-  );
-} catch (err) {
-  console.error('Wallet SMS failed:', err.message);
-}
-}
-
-    await SystemLog.create({
-      eventType: shouldActivate ? "subscription_renewal" : "payment_received",
-      severity: "info",
-      regionCode: payment.regionCode,
-      entityType:
-        payment.customerType === "pppoe" ? "customer" : "hotspot_user",
-      entityId: customer._id,
-      accountId: payment.accountId,
-      message: shouldActivate
-        ? `Subscription activated via manual resolution for ${payment.accountId}`
-        : `Manual resolution payment added to wallet for ${payment.accountId}`,
-      details: {
-        amount: payment.amount,
-        mpesaReceipt: payment.mpesaReceiptNumber,
-        transactionType,
-        newBalance,
-        activated: shouldActivate,
-      },
-      success: true,
-      relatedTransactionId: mpesaTransaction._id,
-      relatedPaymentId: payment._id,
-    });
-
-    console.log("✅ [processManualPayment] Completed successfully");
-  } catch (error) {
-    console.error("🔥 [processManualPayment] Error:", error);
-    throw error;
-  }
-}
 
 
 
@@ -1919,14 +2588,28 @@ try {
  * @access  Private (Admin only)
  */
 exports.depositCash = asyncHandler(async (req, res, next) => {
-  const { customerId, amount, notes, reason } = req.body;
+  const { customerId, amount, notes, reason, receipt, paymentMethod } = req.body;
 
-  if (!customerId || !amount || amount <= 0) {
+  if (!customerId || !amount || amount <= 0 || !paymentMethod) {
     return next(new ErrorResponse("Customer ID and positive amount are required", 400));
+  }
+
+
+  
+  if(receipt){
+    const normalizedReceipt = receipt.trim().toUpperCase();
+    const alreadyDeposited = await Payment.findOne({mpesaReceiptNumber: normalizedReceipt});
+    if(alreadyDeposited){
+      return next(new ErrorResponse("This mpesa code already exists.", 400));
+    }
   }
 
   const customer = await Customer.findById(customerId).populate("subscription.packageId");
   if (!customer) return next(new ErrorResponse("Customer not found", 404));
+
+  if(customer.isChild && customer.shared.expiryWithParent){
+    return next(new ErrorResponse("This child shares due date with parent, deposit to parent instead.", 400));
+  }
 
   // Region access check
   if (req.regionFilter?.regionCode && customer.regionCode !== req.regionFilter.regionCode) {
@@ -1938,6 +2621,8 @@ exports.depositCash = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Customer has no package assigned", 400));
   }
 
+
+
   // Create payment record (completed immediately)
   const payment = await Payment.create({
     customerId: customer._id,
@@ -1945,8 +2630,11 @@ exports.depositCash = asyncHandler(async (req, res, next) => {
     customerType: customer.pppoe ? "pppoe" : "hotspot",
     regionCode: customer.regionCode,
     siteId: customer.siteId,
+    stkID: `${customer._id}-${Date.now()}`,
+    checkoutRequestId: `${customer._id}-${Date.now()}`,
     amount,
-    paymentMethod: "cash",
+    paymentMethod: paymentMethod,
+    mpesaReceiptNumber: receipt || null,
     status: "completed",
     completedAt: new Date(),
     source: "manual_deposit",
@@ -1981,47 +2669,32 @@ exports.depositCash = asyncHandler(async (req, res, next) => {
  */
 async function processCashPayment(payment, customer, packageDoc, extra) {
   console.log(`💰 Processing cash payment for ${customer.accountId}, amount ${payment.amount}`);
-  
   const now = new Date();
+
   const currentBalance = customer.billing?.balance || 0;
-  const totalAvailable = currentBalance + payment.amount;
+  const newBalance = currentBalance + payment.amount;
+  const isActive = customer.subscription?.status === "active" || customer.subscription?.status === "suspended";
   const packagePrice = packageDoc.price;
-  const isActive = customer.subscription?.status === "active";
+  let shouldActivateNow = false;
+  let waitingFlag = false;
 
-  let transactionType;
-  let transactionDescription;
-  let shouldActivate = false;
-  let newBalance = currentBalance;
-  let smsMessage;
+  const radiusService = require("../services/radiusService");
 
-  if (isActive) {
-    // Active customer: always add to wallet (no immediate renewal)
-    transactionType = "WALLET";
-    transactionDescription = "Funds added to wallet (cash deposit)";
-    newBalance = totalAvailable;
-    shouldActivate = false;
-    smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your cash deposit of KES ${payment.amount} was received. The amount has been added to your wallet balance. Your new balance is KES ${totalAvailable}. Thank you!`;
-  } else {
-    // Inactive (expired or suspended)
-    if (totalAvailable >= packagePrice) {
-      transactionType = "SUBSCRIPTION";
-      transactionDescription = `Subscription renewal via cash deposit - ${packageDoc.packageName}`;
-      newBalance = totalAvailable - packagePrice;
-      shouldActivate = true;
-      smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your cash deposit of KES ${payment.amount} has been used to renew your subscription. Your new wallet balance is KES ${newBalance}. Thank you!`;
-    } else {
-      transactionType = "WALLET";
-      transactionDescription = "Insufficient balance - funds added to wallet (cash deposit)";
-      newBalance = totalAvailable;
-      shouldActivate = false;
-      smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your cash deposit of KES ${payment.amount} was received but is not enough to renew your subscription. The amount has been added to your wallet. Your new balance is KES ${totalAvailable}. Thank you!`;
+  if (!isActive) {
+    const hasActiveSession = await radiusService.hasActiveSession(customer.pppoe.username);
+    if (hasActiveSession && newBalance >= packagePrice) {
+      shouldActivateNow = true;
+      waitingFlag = false;
+    } else if (!hasActiveSession && newBalance >= packagePrice) {
+      shouldActivateNow = false;
+      waitingFlag = true;
     }
   }
 
-  // 1. Create the cash receipt transaction (positive)
+  // Cash deposit transaction
   const cashTransaction = await Transaction.create({
     type: "CASH_DEPOSIT",
-    customerType: "pppoe", // extend to hotspot if needed
+    customerType: "pppoe",
     customerId: customer._id,
     accountId: customer.accountId,
     firstName: customer.firstName,
@@ -2033,16 +2706,12 @@ async function processCashPayment(payment, customer, packageDoc, extra) {
     paymentMethod: "cash",
     status: "completed",
     relatedPaymentId: payment._id,
-    metadata: {
-      depositedBy: extra.adminId,
-      notes: extra.notes,
-    },
+    metadata: { depositedBy: extra.adminId, notes: extra.notes },
   });
 
-  // 2. Create the second transaction (debit for wallet or subscription)
-  const secondAmount = transactionType === "SUBSCRIPTION" ? -packagePrice : -payment.amount;
-  const secondTransaction = await Transaction.create({
-    type: transactionType,
+  // Wallet transaction
+  const walletTransaction = await Transaction.create({
+    type: "WALLET",
     customerType: "pppoe",
     customerId: customer._id,
     accountId: customer.accountId,
@@ -2050,157 +2719,179 @@ async function processCashPayment(payment, customer, packageDoc, extra) {
     lastName: customer.lastName,
     regionCode: payment.regionCode,
     siteId: payment.siteId,
-    amount: secondAmount,
-    description: transactionDescription,
+    amount: payment.amount,
+    description: `Funds added to wallet (cash deposit), initialBalance: ${currentBalance}, newBalance: ${newBalance}`,
     paymentMethod: "cash",
-    packageId: transactionType === "SUBSCRIPTION" ? packageDoc._id : undefined,
     relatedTransactionId: cashTransaction._id,
     status: "completed",
     relatedPaymentId: payment._id,
   });
-
-  cashTransaction.relatedTransactionId = secondTransaction._id;
+  cashTransaction.relatedTransactionId = walletTransaction._id;
   await cashTransaction.save();
 
-  // 3. Update customer balance and billing
-  customer.billing = customer.billing || {};
-  customer.billing.balance = newBalance;
-  customer.billing.lastPaymentDate = now;
-  
-  // Add a note
-  customer.notes.push({
-    note: `Cash deposit KES ${payment.amount}. ${extra.reason || "No reason"}. Balance: ${currentBalance} → ${newBalance}`,
-    addedBy: extra.adminId,
-    addedAt: now,
-  });
-
-  // 4. Handle activation if subscription renewal
-  if (shouldActivate && customer.pppoe && customer.pppoe.username) {
-    const currentExpiry = customer.subscription.expiresAt;
-    const baseDate = (isActive && currentExpiry > now) ? currentExpiry : now;
-    let newExpiry = calculatePeriodEnd(baseDate, packageDoc.period, packageDoc.periodUnit);
-    
+  // Prepare database update
+  let subscriptionUpdate = {};
+  if (shouldActivateNow) {
+    const afterDeduction = newBalance - packagePrice;
+    let newExpiry = calculatePeriodEnd(now, packageDoc.period, packageDoc.periodUnit);
     if (customer.freeExtensionDays && customer.freeExtensionDays > 0) {
-      const extensionDays = customer.freeExtensionDays;
       newExpiry = new Date(newExpiry);
-      newExpiry.setDate(newExpiry.getDate() - extensionDays);
+      newExpiry.setDate(newExpiry.getDate() - customer.freeExtensionDays);
       if (newExpiry < now) newExpiry = now;
-      customer.freeExtensionDays = 0;
     }
-    
-    customer.subscription.expiresAt = newExpiry;
-    customer.subscription.status = "active";
-    // Optionally set activatedAt if not set
-    if (!customer.subscription.activatedAt) customer.subscription.activatedAt = now;
-    customer.subscription.packageId = packageDoc._id;
-    
-    // Renewals array (optional)
-    if (!customer.renewals) customer.renewals = [];
-    customer.renewals.push({
-      dateRenewed: now,
-      method: "cash",
-      amount: payment.amount,
-    });
-    
-    await customer.save();
-    
-    // Activate in RADIUS
-    const site = await Site.findById(payment.siteId);
-    if (site) {
-      try {
-        const radiusService = require("../services/radiusService");
-        const groupName = packageDoc.packageName.replace(/\s+/g, "_").toUpperCase();
-        const radiusResult = await radiusService.enableAccount(customer.pppoe.username, groupName);
-        if (!radiusResult.success) {
-          console.error("RADIUS activation failed:", radiusResult.error);
-        } else {
-          console.log("RADIUS activated for cash renewal");
-        }
-      } catch (err) {
-        console.error("RADIUS activation error:", err.message);
-      }
-    }
-  } else if (shouldActivate && payment.customerType === "hotspot") {
-    // Hotspot activation (if you ever use cash for hotspot)
-    customer.activeSession = {
-      packageId: packageDoc._id,
-      startedAt: now,
-      expiresAt: calculatePeriodEnd(now, packageDoc.period, packageDoc.periodUnit),
-      dataLimit: packageDoc.dataLimit,
-      dataUsed: 0,
-      isActive: true,
+    subscriptionUpdate = {
+      'subscription.status': 'active',
+      'subscription.activatedAt': now,
+      'subscription.expiresAt': newExpiry,
+      'subscription.packageId': packageDoc._id,
+      'billing.balance': afterDeduction,
+      'billing.lastPaymentDate': now,
+      waitingForSession: false,
+      freeExtensionDays: 0,
     };
-    customer.purchaseHistory.push({
-      packageId: packageDoc._id,
-      purchasedAt: now,
-      amount: payment.amount,
-      transactionId: cashTransaction._id,
-    });
-    await customer.save();
   } else {
-    // Just save balance update
-    await customer.save();
+    subscriptionUpdate = {
+      'billing.balance': newBalance,
+      'billing.lastPaymentDate': now,
+      waitingForSession: waitingFlag,
+    };
   }
 
-  // 5. Send SMS (optional – you already have mobileSasaService)
-  const smsTemplateService = require("../services/smsTemplateService")
-if(shouldActivate){
-  
-  await smsTemplateService.sendUsingTemplate(
-    'payment_renewal',
-    customer.phoneNumber,
-    {
-      customerName: `${customer.firstName} ${customer.lastName}`,
-      amount: payment.amount,
-      expiryDate: newExpiry.toLocaleDateString(),
-    },
-    { customerId: customer._id, accountId: customer.accountId, type: 'subscription_renewal', regionCode: payment.regionCode }
-  );
-}else{
-  const smsTemplateService = require('../services/smsTemplateService');
-// After computing newBalance and before the SMS log
-try {
-  await smsTemplateService.sendUsingTemplate(
-    'payment_wallet',
-    customer.phoneNumber,
-    {
-      customerName: `${customer.firstName} ${customer.lastName}`,
-      amount: payment.amount,
-      newBalance: newBalance,
-    },
-    { customerId: customer._id, accountId: customer.accountId, type: 'payment_confirmation', regionCode: payment.regionCode }
-  );
-} catch (err) {
-  console.error('Wallet SMS failed:', err.message);
-}
+  // Apply direct update
+  await Customer.updateOne({ _id: customer._id }, { $set: subscriptionUpdate });
+
+  // Update in-memory object for logs/SMS
+  if (shouldActivateNow) {
+    customer.subscription.status = 'active';
+    customer.subscription.expiresAt = subscriptionUpdate['subscription.expiresAt'];
+    customer.billing.balance = subscriptionUpdate['billing.balance'];
+    customer.waitingForSession = false;
+    await radiusService.removePendingActivation(customer.pppoe.username); 
+    if (!customer.renewals) customer.renewals = [];
+    customer.renewals.push({ dateRenewed: now, method: "cash", amount: payment.amount });
+    // Create SUBSCRIPTION transaction
+    const subscriptionTransaction = await Transaction.create({
+      type: "SUBSCRIPTION",
+      customerType: "pppoe",
+      customerId: customer._id,
+      accountId: customer.accountId,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      regionCode: payment.regionCode,
+      siteId: payment.siteId,
+      amount: -packagePrice,
+      description: `Subscription renewal via cash deposit (immediate)`,
+      paymentMethod: "cash",
+      packageId: packageDoc._id,
+      relatedTransactionId: cashTransaction._id,
+      status: "completed",
+      relatedPaymentId: payment._id,
+    });
+
+    await Transaction.findByIdAndDelete(walletTransaction._id);
+
+    cashTransaction.relatedTransactionId = subscriptionTransaction._id;
+    await cashTransaction.save();
+
+
+    // Enable RADIUS
+    const groupName = packageDoc.packageName.replace(/\s+/g, "_").toUpperCase();
+    await radiusService.enableAccount(customer.pppoe.username, groupName);
+    await radiusService.setBillingCycleStart(customer.pppoe.username, new Date());
+    
+
+    if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+      // Propagate to children that share expiry
+      const children = await Customer.find({ _id: { $in: customer.sharedExpiry } }).populate('subscription.packageId');
+      for (const child of children) {
+        child.subscription.expiresAt = newExpiry; // newExpiry is the parent's new expiry
+        child.subscription.status = 'active';
+        if (!child.subscription.activatedAt) child.subscription.activatedAt = now;
+        await child.save();
+        const childGroupName = child.subscription.packageId.packageName.replace(/\s+/g, '_').toUpperCase();
+        await radiusService.enableAccount(child.pppoe.username, childGroupName);
+        await radiusService.setBillingCycleStart(child.pppoe.username, new Date());
+        // Log child activation (optional)
+      }
+    }
+
+    const voucherData = {
+      customerId: customer._id,
+      packageId: '6a311253de22d46f9b16b375',
+      voucherAmount: 3,
+      createdBy: null,
+      regionCode: customer.regionCode,
+      rollbackOnSmsFailure: true,
+    };
+
+    try{
+await generateAndSendVouchers(voucherData);
+}catch(error){
+console.log("Could not generate bonus vouchers for customer", error);
 }
 
-  // 6. System log
-  await SystemLog.create({
-    eventType: shouldActivate ? "subscription_renewal" : "payment_received",
-    severity: "info",
-    regionCode: payment.regionCode,
-    entityType: "customer",
-    entityId: customer._id,
-    accountId: customer.accountId,
-    message: shouldActivate
-      ? `Subscription renewed via cash deposit for ${customer.accountId}`
-      : `Cash deposit added to wallet for ${customer.accountId}`,
-    details: {
-      amount: payment.amount,
-      oldBalance: currentBalance,
-      newBalance,
-      transactionType,
-      activated: shouldActivate,
-      reason: extra.reason,
-    },
-    triggeredBy: extra.adminId,
-    success: true,
-    relatedTransactionId: cashTransaction._id,
-    relatedPaymentId: payment._id,
-  });
+   
+  } else {
+    customer.billing.balance = subscriptionUpdate['billing.balance'];
+    customer.waitingForSession = waitingFlag;
+    await radiusService.addPendingActivation(customer.pppoe.username); 
+    // Add a note for cash deposit
+    customer.notes.push({
+      note: `Cash deposit KES ${payment.amount}. ${extra.reason || "No reason"}. Balance: ${currentBalance} → ${newBalance}`,
+      addedBy: extra.adminId,
+      addedAt: now,
+    });
+  }
+  customer.billing.lastPaymentDate = now;
 
-  console.log(`✅ Cash payment processed for ${customer.accountId}`);
+  // System log
+  if (shouldActivateNow) {
+    await SystemLog.create({
+      eventType: "subscription_renewal",
+      severity: "info",
+      regionCode: payment.regionCode,
+      entityType: "customer",
+      entityId: customer._id,
+      accountId: customer.accountId,
+      message: `Subscription renewed via cash deposit (active session)`,
+      details: { amount: payment.amount, packagePrice, newBalance: customer.billing.balance, newExpiry: subscriptionUpdate['subscription.expiresAt'] },
+      success: true,
+    });
+  } else {
+    await SystemLog.create({
+      eventType: "payment_received",
+      severity: "info",
+      regionCode: payment.regionCode,
+      entityType: "customer",
+      entityId: customer._id,
+      accountId: customer.accountId,
+      message: `Cash deposit added to wallet for ${customer.accountId}${waitingFlag ? ' (waiting for session)' : ''}`,
+      details: { amount: payment.amount, newBalance: customer.billing.balance, waitingFlag },
+      success: true,
+    });
+  }
+
+  // SMS
+  const smsTemplateService = require("../services/smsTemplateService");
+  try {
+    if (shouldActivateNow) {
+      await smsTemplateService.sendUsingTemplate(
+        'payment_renewal',
+        customer.phoneNumber,
+        { customerName: `${customer.firstName} ${customer.lastName}`, amount: payment.amount, expiryDate: customer.subscription.expiresAt.toLocaleDateString() },
+        { customerId: customer._id, accountId: customer.accountId, type: 'subscription_renewal', regionCode: payment.regionCode }
+      );
+    } else {
+      await smsTemplateService.sendUsingTemplate(
+        'payment_wallet',
+        customer.phoneNumber,
+        { customerName: `${customer.firstName} ${customer.lastName}`, amount: payment.amount, newBalance: customer.billing.balance },
+        { customerId: customer._id, accountId: customer.accountId, type: 'payment_confirmation', regionCode: payment.regionCode }
+      );
+    }
+  } catch (err) {
+    console.log("SMS not sent:", err.message);
+  }
 }
 
 module.exports = exports;

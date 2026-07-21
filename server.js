@@ -8,6 +8,8 @@ const session = require('express-session');
 const MongoDBStore = require('connect-mongodb-session')(session); // <-- New store
 const morgan = require('morgan');
 
+
+
 // Import database connection
 const connectDB = require('./config/database');
 
@@ -19,6 +21,35 @@ const app = express();
 
 // Wrap server startup in an async function to ensure DB connection
 const startServer = async () => {
+
+// ========== GLOBAL HANDLERS ==========
+const fs = require('fs');
+const path = require('path');
+
+const logDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+
+function logToFile(message, type = 'error') {
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] [${type.toUpperCase()}] ${message}\n`;
+  const logFile = path.join(logDir, `${type === 'error' ? 'errors' : 'uncaught'}.log`);
+  fs.appendFileSync(logFile, logLine);
+  console.error(logLine);
+}
+
+process.on('uncaughtException', (err) => {
+  logToFile(`Uncaught Exception: ${err.stack || err.message}`, 'uncaught');
+  // Do not exit
+});
+
+process.on('unhandledRejection', (err, promise) => {
+  logToFile(`Unhandled Rejection: ${err.stack || err.message}`, 'uncaught');
+  console.error('Unhandled Rejection (server will continue):', err);
+  // Do not exit
+});
+// ========== END OF GLOBAL HANDLERS ==========
+
+
   try {
     // Connect to database and wait for it
     await connectDB();
@@ -29,7 +60,18 @@ const startServer = async () => {
 
     // CORS
     app.use(cors({
-      origin: [process.env.BASE_URL,'https://isp-demo-frontend.vercel.app', 'http://localhost:3000'],
+      origin: function (origin, callback) {
+        const allowed = [
+          process.env.BASE_URL,
+          'http://localhost:3000',
+        ];
+      
+        if (!origin || allowed.includes(origin) || /^https:\/\/[^.]+\.skylinknetworks\.co\.ke$/.test(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
       allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
@@ -72,19 +114,22 @@ const startServer = async () => {
       console.error('Session store error:', error);
     });
 
+    app.set('trust proxy', 1);
+
+    // Session configuration
     app.use(session({
-      secret: process.env.SESSION_SECRET || 'demo-secret-key-change-me', // fallback for demo
-      resave: true,               // force save even if unchanged (less efficient but fine)
-      saveUninitialized: true,    // create session for every visitor (no login needed)
-      store: store,               // keep your store (e.g., MongoDB, Redis)
+      secret: process.env.SESSION_SECRET, // no fallback – fail if missing
+      resave: false,
+      saveUninitialized: false,
+      store: store,
       cookie: {
-        secure: false,            // allow HTTP (no HTTPS required)
-        httpOnly: false,          // allow client-side JavaScript to read the cookie (very insecure)
-        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days, so users stay logged in longer
-        sameSite: 'none',         // allow cross-site requests (for iframe embeds, etc.)
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        maxAge: 1000 * 60 * 60 * 24,   // 1 day
+        sameSite: 'lax',                // or 'strict' if you never want cross-site
         path: '/'
       },
-      rolling: false              // don't reset expiry on each request (simpler)
+      rolling: true
     }));
 
     // Logging (only in development)
@@ -138,6 +183,14 @@ const startServer = async () => {
     app.use('/api/routers', require('./routes/routers'));
     app.use('/api/sms-templates', require('./routes/smsTemplates'));
     app.use('/api/hotspot', require('./routes/hotspot'));
+    app.use('/api/vouchers', require('./routes/vouchers'));
+    app.use('/api/retention', require('./routes/retention'));
+    app.use('/api/internal', require('./routes/internal'));
+    app.use('/api/support', require('./routes/interSystemRoutes'));
+    app.use("/api/operations", require("./routes/operationRoutes"));
+    app.use("/api/documents", require("./routes/documents"));
+    app.use("/api/notifications", require("./routes/notifications"));
+
 
 
     app.get('/expired/:siteId', (req, res) => {
@@ -169,12 +222,19 @@ const startServer = async () => {
 
 
     require('./cron/expiryAndRenew');
-    require('./cron/pauseAccounts');
+    
+    require('./cron/activationCron');
+    require('./cron/checkWaitingForrSession');
+    // require('./cron/pauseAccounts');
     require('./cron/burstCleanse')
     const { startExpiryWarningsCron } = require('./cron/expiryWarnings');
     startExpiryWarningsCron();
     const { startSyncActiveSessionsCron } = require('./cron/syncActiveSessions');
     startSyncActiveSessionsCron();
+    const { startExpiredHotspotCleanupCron } = require('./cron/expiredHotspotCleanUp');
+    startExpiredHotspotCleanupCron();
+    const bandwidthPoller = require('./cron/bandwidthPoller');
+bandwidthPoller.start();
     
 
 
@@ -195,12 +255,7 @@ const startServer = async () => {
       `);
     });
 
-    // Handle unhandled promise rejections
-    process.on('unhandledRejection', (err, promise) => {
-      console.log(`Error: ${err.message}`);
-      // Close server & exit process
-      server.close(() => process.exit(1));
-    });
+
 
     // Handle SIGTERM
     process.on('SIGTERM', () => {

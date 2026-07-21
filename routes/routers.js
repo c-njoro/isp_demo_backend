@@ -17,16 +17,27 @@ const {
   createPppoeServer,
   enableRadius,
   configureDisabledRedirect,
-  configureSystemScripts
+  configureSystemScripts,
+  generateVpnConfig,
+  downloadVpnConfig,
+  getVpnStatus,
+  revokeVpnConfig,
+  getVpnSetupScript,
+  getRouterTopology,
+  getRouterBandwidth,
+  getRouterBandwidthHistory,
+  getRoutersForFilters
 } = require('../controllers/routerController');
 
 // All router operations require authentication and admin rights
-router.use(protect, adminOnly);
+router.use(protect);
 
 // CRUD
 router.route('/')
   .get(getRouters)
   .post(createRouter);
+
+  router.get("/for-filters", getRoutersForFilters);
 
 router.route('/:id')
   .get(getRouter)
@@ -47,5 +58,13 @@ router.post('/:routerId/pppoe-server', createPppoeServer);
 router.post('/:routerId/enable-radius', enableRadius);
 router.post('/:routerId/configure-disabled-redirect', configureDisabledRedirect);
 router.post('/:routerId/configure-system-scripts', configureSystemScripts);
+router.post('/:id/vpn/generate',  protect, generateVpnConfig);
+router.get('/:id/vpn/download',   protect, downloadVpnConfig);
+router.get('/:id/vpn/status',     protect, getVpnStatus);
+router.get('/:id/vpn/script',     protect, getVpnSetupScript);
+router.delete('/:id/vpn',         protect, revokeVpnConfig);
+router.get('/:routerId/topology', protect, getRouterTopology);
+router.get('/:routerId/bandwidth', protect, getRouterBandwidth);
+router.get('/:routerId/bandwidth/history',protect,  getRouterBandwidthHistory);
 
 module.exports = router;

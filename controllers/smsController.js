@@ -5,6 +5,9 @@ const SmsLog = require('../models/SmsLog');
 const SmsTemplate = require('../models/SmsTemplate');
 const Customer = require('../models/Customer');
 const { formatPhoneNumber } = require('../utils/phoneHelpers');
+const BulkSmsJob = require('../models/BulkSmsJob');
+const MAX_SYNC_BATCH = 500;
+
 
 // Helper to log SMS with recipient details
 async function logSms(recipient, message, type, regionCode, providerResponse, status, cost, error = null) {
@@ -81,104 +84,45 @@ exports.sendSingleSms = asyncHandler(async (req, res, next) => {
 exports.sendBulkByFilter = asyncHandler(async (req, res, next) => {
   const { filters, message, templateId, type = 'bulk' } = req.body;
 
-  // Must provide either a direct message or a template ID
+  // Validate message or template
   if (!message && !templateId) {
     return next(new ErrorResponse('Either a message or a template ID is required', 400));
   }
 
-  // Build the query from filters
-  const query = buildCustomerQuery(filters);
-  const customers = await Customer.find(query).select('phoneNumber accountId firstName lastName subscription.status');
+  // Build the query using the region filter
+  const query = buildCustomerQuery(filters, req.regionFilter || {});
 
-  if (customers.length === 0) {
+  // Count matching customers
+  const total = await Customer.countDocuments(query);
+  if (total === 0) {
     return next(new ErrorResponse('No customers found matching the given filters', 404));
   }
 
-  // If a template is provided, fetch and validate it
-  let template = null;
-  let templateBody = null;
-  if (templateId) {
-    template = await SmsTemplate.findById(templateId);
-    if (!template) {
-      return next(new ErrorResponse('Template not found', 404));
-    }
-    if (!template.isActive) {
-      return next(new ErrorResponse('Template is inactive', 400));
-    }
-    templateBody = template.body;
+  // If total exceeds threshold, create a background job
+  if (total > MAX_SYNC_BATCH) {
+    const job = await BulkSmsJob.create({
+      status: 'pending',
+      total,
+      filters,
+      message,
+      templateId,
+      type,
+      regionCode: req.regionFilter?.regionCode || null,
+      triggeredBy: req.user?._id || req.session?.userId || null,
+    });
+
+    // Start background processing (non-blocking)
+    processBulkSmsJobInBackground(job._id, query, { message, templateId, type }, req);
+
+    return res.status(202).json({
+      success: true,
+      message: `Bulk SMS job started. ${total} recipients will be processed in the background.`,
+      data: { jobId: job._id, total },
+    });
   }
 
-  const results = {
-    total: customers.length,
-    successful: 0,
-    failed: 0,
-    errors: [],
-  };
-
-  // Send to each customer
-  for (const customer of customers) {
-    let finalMessage = message;
-    // If using template, replace placeholders with customer data
-    if (templateBody) {
-      const placeholderData = {
-        customerName: `${customer.firstName} ${customer.lastName}`,
-        // Add more placeholders as needed (e.g., accountId, status, etc.)
-        accountId: customer.accountId,
-        status: customer.subscription?.status || '',
-      };
-      finalMessage = replacePlaceholders(templateBody, placeholderData);
-    }
-
-    // Ensure message is not empty after replacement
-    if (!finalMessage || finalMessage.trim() === '') {
-      results.failed++;
-      results.errors.push({
-        accountId: customer.accountId,
-        error: 'Message became empty after placeholder replacement',
-      });
-      continue;
-    }
-
-    try {
-      const sendResult = await mobileSasaService.sendSingle(customer.phoneNumber, finalMessage);
-      // Log success
-      await logSms(
-        {
-          phoneNumber: customer.phoneNumber,
-          customerId: customer._id,
-          accountId: customer.accountId,
-        },
-        finalMessage,
-        type,
-        req.regionFilter?.regionCode || null,
-        sendResult.response,
-        'sent',
-        sendResult.cost
-      );
-      results.successful++;
-    } catch (err) {
-      // Log failure
-      await logSms(
-        {
-          phoneNumber: customer.phoneNumber,
-          customerId: customer._id,
-          accountId: customer.accountId,
-        },
-        finalMessage,
-        type,
-        req.regionFilter?.regionCode || null,
-        null,
-        'failed',
-        null,
-        { code: 'api_error', message: err.message }
-      );
-      results.failed++;
-      results.errors.push({
-        accountId: customer.accountId,
-        error: err.message,
-      });
-    }
-  }
+  // Small batch – process synchronously
+  const results = await processBulkSmsSynchronously(query, { message, templateId, type }, req);
 
   res.status(200).json({
     success: true,
@@ -187,7 +131,7 @@ exports.sendBulkByFilter = asyncHandler(async (req, res, next) => {
       total: results.total,
       successful: results.successful,
       failed: results.failed,
-      errors: results.errors.slice(0, 20), // limit error list
+      errors: results.errors.slice(0, 20),
     },
   });
 });
@@ -279,15 +223,10 @@ exports.getSmsLogs = asyncHandler(async (req, res, next) => {
 
 // Test filter to get customer count (before sending bulk)
 exports.testFilter = asyncHandler(async (req, res, next) => {
- 
-    const { filters } = req.body;
-    console.log("Req.body: ", req.body)
-    console.log("Filters: ", filters)
-    const query = buildCustomerQuery(filters);
-    console.log("Query: ", query)
-    const count = await Customer.countDocuments(query);
-    res.json({ success: true, data: { count } });
-  
+  const { filters } = req.body;
+  const query = buildCustomerQuery(filters, req.regionFilter || {});
+  const count = await Customer.countDocuments(query);
+  res.json({ success: true, data: { count } });
 });
 
 // Helper to build customer query from filters
@@ -310,16 +249,233 @@ exports.testFilter = asyncHandler(async (req, res, next) => {
 //   return query;
 // }
 
-function buildCustomerQuery(filters) {
-  const query = {};
+// Replace the buildCustomerQuery function with this:
+
+function buildCustomerQuery(filters, regionFilter = {}) {
+  const query = { ...regionFilter };
+
+  // Search across city, subLocation, localArea
+  if (filters.search && filters.search.trim()) {
+    const search = filters.search.trim();
+    query.$or = [
+      { city: { $regex: search, $options: 'i' } },
+      { subLocation: { $regex: search, $options: 'i' } },
+      { localArea: { $regex: search, $options: 'i' } },
+    ];
+  }
+
+  // Subscription status
   if (filters.subscriptionStatus && filters.subscriptionStatus !== '') {
     query['subscription.status'] = filters.subscriptionStatus;
   }
-  if (Array.isArray(filters.siteId) && filters.siteId.length > 0) {
+
+  // Sites (multi-select)
+  if (filters.siteId && Array.isArray(filters.siteId) && filters.siteId.length > 0) {
     query.siteId = { $in: filters.siteId };
+  } else if (filters.siteId && typeof filters.siteId === 'string') {
+    query.siteId = filters.siteId;
   }
-  if (Array.isArray(filters.subscriptionPackageId) && filters.subscriptionPackageId.length > 0) {
+
+  // Packages (multi-select)
+  if (filters.subscriptionPackageId && Array.isArray(filters.subscriptionPackageId) && filters.subscriptionPackageId.length > 0) {
     query['subscription.packageId'] = { $in: filters.subscriptionPackageId };
+  } else if (filters.subscriptionPackageId && typeof filters.subscriptionPackageId === 'string') {
+    query['subscription.packageId'] = filters.subscriptionPackageId;
   }
+
+  // Router (NAS IP) – exact match on pppoe.siteIp
+ // Router (NAS IP) – multiple values
+if (filters.nasIp && Array.isArray(filters.nasIp) && filters.nasIp.length > 0) {
+  query.nasIp = { $in: filters.nasIp };
+} else if (filters.nasIp && typeof filters.nasIp === 'string') {
+  query.nasIp = filters.nasIp;
+}
+
+  // Child accounts are included by default – no filter to exclude them.
+
   return query;
 }
+
+
+
+
+
+/**
+ * Process bulk SMS synchronously for a given customer query.
+ * Returns { total, successful, failed, errors }
+ */
+async function processBulkSmsSynchronously(query, options, req) {
+  const { message, templateId, type } = options;
+  const customers = await Customer.find(query).select('phoneNumber accountId firstName lastName subscription.status');
+  const results = {
+    total: customers.length,
+    successful: 0,
+    failed: 0,
+    errors: [],
+  };
+
+  let template = null;
+  let templateBody = null;
+  if (templateId) {
+    template = await SmsTemplate.findById(templateId);
+    if (!template || !template.isActive) {
+      throw new Error('Template not found or inactive');
+    }
+    templateBody = template.body;
+  }
+
+  for (const customer of customers) {
+    let finalMessage = message;
+    if (templateBody) {
+      const placeholderData = {
+        customerName: `${customer.firstName} ${customer.lastName}`,
+        accountId: customer.accountId,
+        status: customer.subscription?.status || '',
+      };
+      finalMessage = replacePlaceholders(templateBody, placeholderData);
+    }
+
+    if (!finalMessage || finalMessage.trim() === '') {
+      results.failed++;
+      results.errors.push({
+        accountId: customer.accountId,
+        phoneNumber: customer.phoneNumber,
+        error: 'Message became empty after placeholder replacement',
+      });
+      continue;
+    }
+
+    try {
+      const sendResult = await mobileSasaService.sendSingle(customer.phoneNumber, finalMessage);
+      await logSms(
+        {
+          phoneNumber: customer.phoneNumber,
+          customerId: customer._id,
+          accountId: customer.accountId,
+        },
+        finalMessage,
+        type,
+        req.regionFilter?.regionCode || null,
+        sendResult.response,
+        'sent',
+        sendResult.cost
+      );
+      results.successful++;
+    } catch (err) {
+      await logSms(
+        {
+          phoneNumber: customer.phoneNumber,
+          customerId: customer._id,
+          accountId: customer.accountId,
+        },
+        finalMessage,
+        type,
+        req.regionFilter?.regionCode || null,
+        null,
+        'failed',
+        null,
+        { code: 'api_error', message: err.message }
+      );
+      results.failed++;
+      results.errors.push({
+        accountId: customer.accountId,
+        phoneNumber: customer.phoneNumber,
+        error: err.message,
+      });
+    }
+  }
+  return results;
+}
+
+
+
+/**
+ * Process a bulk SMS job in the background.
+ * Updates the job document with progress and final status.
+ */
+async function processBulkSmsJobInBackground(jobId, query, options, req) {
+  const job = await BulkSmsJob.findById(jobId);
+  if (!job) return;
+
+  try {
+    job.status = 'processing';
+    job.startedAt = new Date();
+    await job.save();
+
+    const batchSize = 100;
+    let skip = 0;
+    const results = {
+      successful: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    // We need a minimal req object for logging (regionCode + user)
+    const logReq = {
+      regionFilter: job.regionCode ? { regionCode: job.regionCode } : null,
+      user: { _id: job.triggeredBy },
+    };
+
+    while (true) {
+      const customers = await Customer.find(query)
+        .select('phoneNumber accountId firstName lastName subscription.status')
+        .skip(skip)
+        .limit(batchSize)
+        .lean();
+
+      if (customers.length === 0) break;
+
+      // Process this batch synchronously (reuse the helper)
+      const batchResults = await processBulkSmsSynchronously(
+        { _id: { $in: customers.map(c => c._id) } },
+        options,
+        logReq
+      );
+
+      results.successful += batchResults.successful;
+      results.failed += batchResults.failed;
+      results.errors.push(...batchResults.errors);
+
+      job.processed += customers.length;
+      job.succeeded = results.successful;
+      job.failed = results.failed;
+      // Keep only the first 100 errors to avoid document size blow-up
+      job.errors = results.errors.slice(0, 100);
+      await job.save();
+
+      skip += batchSize;
+    }
+
+    job.status = 'completed';
+    job.finishedAt = new Date();
+    await job.save();
+  } catch (error) {
+    job.status = 'failed';
+    job.finishedAt = new Date();
+    job.errors.push({ error: error.message });
+    await job.save();
+  }
+}
+
+
+// Get bulk SMS job status
+exports.getBulkSmsJobStatus = asyncHandler(async (req, res, next) => {
+  const { jobId } = req.params;
+  const job = await BulkSmsJob.findById(jobId);
+  if (!job) {
+    return next(new ErrorResponse('Job not found', 404));
+  }
+  res.status(200).json({
+    success: true,
+    data: {
+      status: job.status,
+      total: job.total,
+      processed: job.processed,
+      succeeded: job.succeeded,
+      failed: job.failed,
+      errors: job.errors.slice(0, 50),
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+    },
+  });
+});

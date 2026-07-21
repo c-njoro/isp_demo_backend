@@ -10,7 +10,8 @@ const {
   getOnuStatus,
   syncOnuStatus,
   bulkSyncOnus,          // new
-  getOnuStatsBySite      // new
+  getOnuStatsBySite,      // new
+  getOnuLiveStatus
 } = require('../controllers/onuController');
 const { protect, applyRegionFilter, adminOnly } = require('../middleware/auth');
 
@@ -22,6 +23,8 @@ router.use(applyRegionFilter);
 router.route('/')
   .get(getOnus)
   .post(adminOnly, createOnu);
+
+  router.get('/:id/live-status', getOnuLiveStatus);
 
 router.route('/:id')
   .get(getOnu)

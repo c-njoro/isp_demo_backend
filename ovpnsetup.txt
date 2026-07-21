@@ -1,0 +1,619 @@
+cat > /home/claude/openvpn_setup.js << 'EOF'
+const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+        HeadingLevel, AlignmentType, BorderStyle, WidthType, ShadingType,
+        LevelFormat, PageNumber, Footer, PageBreak } = require('docx');
+const fs = require('fs');
+
+const border = { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' };
+const borders = { top: border, bottom: border, left: border, right: border };
+const headerBorder = { style: BorderStyle.SINGLE, size: 1, color: '2E4057' };
+const headerBorders = { top: headerBorder, bottom: headerBorder, left: headerBorder, right: headerBorder };
+
+function h1(text) {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    spacing: { before: 400, after: 200 },
+    children: [new TextRun({ text, bold: true, size: 32, font: 'Arial', color: '2E4057' })]
+  });
+}
+
+function h2(text) {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    spacing: { before: 300, after: 160 },
+    children: [new TextRun({ text, bold: true, size: 26, font: 'Arial', color: '2E4057' })]
+  });
+}
+
+function h3(text) {
+  return new Paragraph({
+    spacing: { before: 200, after: 120 },
+    children: [new TextRun({ text, bold: true, size: 22, font: 'Arial', color: '3A6186' })]
+  });
+}
+
+function para(text, options = {}) {
+  return new Paragraph({
+    spacing: { before: 80, after: 80 },
+    children: [new TextRun({ text, size: 20, font: 'Arial', ...options })]
+  });
+}
+
+function note(text) {
+  return new Paragraph({
+    spacing: { before: 100, after: 100 },
+    indent: { left: 360 },
+    children: [
+      new TextRun({ text: '⚠️  Note: ', bold: true, size: 20, font: 'Arial', color: 'C0392B' }),
+      new TextRun({ text, size: 20, font: 'Arial', italics: true })
+    ]
+  });
+}
+
+function tip(text) {
+  return new Paragraph({
+    spacing: { before: 100, after: 100 },
+    indent: { left: 360 },
+    children: [
+      new TextRun({ text: '✅  ', size: 20, font: 'Arial' }),
+      new TextRun({ text, size: 20, font: 'Arial', italics: true, color: '27AE60' })
+    ]
+  });
+}
+
+function bullet(text, level = 0) {
+  return new Paragraph({
+    numbering: { reference: 'bullets', level },
+    spacing: { before: 60, after: 60 },
+    children: [new TextRun({ text, size: 20, font: 'Arial' })]
+  });
+}
+
+function code(text) {
+  return new Paragraph({
+    spacing: { before: 60, after: 60 },
+    indent: { left: 360 },
+    border: { left: { style: BorderStyle.SINGLE, size: 6, color: '3A6186' } },
+    children: [new TextRun({ text, size: 18, font: 'Courier New', color: '2C3E50' })]
+  });
+}
+
+function codeBlock(lines) {
+  return lines.map(l => code(l));
+}
+
+function tableRow(cells, isHeader = false) {
+  return new TableRow({
+    tableHeader: isHeader,
+    children: cells.map(({ text, width }) => new TableCell({
+      borders: isHeader ? headerBorders : borders,
+      width: { size: width, type: WidthType.DXA },
+      shading: isHeader
+        ? { fill: '2E4057', type: ShadingType.CLEAR }
+        : { fill: 'F8F9FA', type: ShadingType.CLEAR },
+      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      children: [new Paragraph({
+        children: [new TextRun({
+          text,
+          size: 18,
+          font: 'Arial',
+          bold: isHeader,
+          color: isHeader ? 'FFFFFF' : '2C3E50'
+        })]
+      })]
+    }))
+  });
+}
+
+function spacer() {
+  return new Paragraph({ spacing: { before: 120, after: 120 }, children: [new TextRun('')] });
+}
+
+function sectionDivider() {
+  return new Paragraph({
+    spacing: { before: 200, after: 200 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: '2E4057' } },
+    children: [new TextRun('')]
+  });
+}
+
+const doc = new Document({
+  numbering: {
+    config: [
+      {
+        reference: 'bullets',
+        levels: [
+          { level: 0, format: LevelFormat.BULLET, text: '•', alignment: AlignmentType.LEFT,
+            style: { paragraph: { indent: { left: 720, hanging: 360 } } } },
+          { level: 1, format: LevelFormat.BULLET, text: '◦', alignment: AlignmentType.LEFT,
+            style: { paragraph: { indent: { left: 1080, hanging: 360 } } } },
+        ]
+      },
+      {
+        reference: 'numbers',
+        levels: [
+          { level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT,
+            style: { paragraph: { indent: { left: 720, hanging: 360 } } } }
+        ]
+      }
+    ]
+  },
+  styles: {
+    default: { document: { run: { font: 'Arial', size: 20 } } },
+    paragraphStyles: [
+      { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true,
+        run: { size: 32, bold: true, font: 'Arial', color: '2E4057' },
+        paragraph: { spacing: { before: 400, after: 200 }, outlineLevel: 0 } },
+      { id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true,
+        run: { size: 26, bold: true, font: 'Arial', color: '2E4057' },
+        paragraph: { spacing: { before: 300, after: 160 }, outlineLevel: 1 } },
+    ]
+  },
+  sections: [{
+    properties: {
+      page: {
+        size: { width: 12240, height: 15840 },
+        margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
+      }
+    },
+    footers: {
+      default: new Footer({
+        children: [new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new TextRun({ text: 'SkyLink Networks — OpenVPN Setup Guide   |   Page ', size: 18, font: 'Arial', color: '888888' }),
+            new PageNumber(),
+          ]
+        })]
+      })
+    },
+    children: [
+
+      // ═══════════════════════════════════════════════
+      // TITLE PAGE
+      // ═══════════════════════════════════════════════
+      new Paragraph({ spacing: { before: 1440, after: 400 }, alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: 'SkyLink Networks', size: 56, bold: true, font: 'Arial', color: '2E4057' })] }),
+      new Paragraph({ spacing: { before: 0, after: 200 }, alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: 'OpenVPN Server Setup Guide', size: 36, font: 'Arial', color: '3A6186' })] }),
+      new Paragraph({ spacing: { before: 0, after: 600 }, alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: 'For Ubuntu 24.04 VPS + MikroTik RouterOS 6.x', size: 24, font: 'Arial', color: '888888', italics: true })] }),
+      sectionDivider(),
+      new Paragraph({ spacing: { before: 200, after: 80 }, alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: 'Version: 1.0   |   Date: June 2026', size: 20, font: 'Arial', color: '888888' })] }),
+      new Paragraph({ spacing: { before: 80, after: 80 }, alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: 'Prepared by: Skylink Networks Engineering', size: 20, font: 'Arial', color: '888888' })] }),
+      new Paragraph({ children: [new PageBreak()] }),
+
+      // ═══════════════════════════════════════════════
+      // SECTION 1 — OVERVIEW
+      // ═══════════════════════════════════════════════
+      h1('1. Overview'),
+      para('This guide documents the complete setup of an OpenVPN server on an Ubuntu 24.04 VPS to enable secure, persistent API connections to MikroTik routers deployed at client sites — including those behind NAT or without public IP addresses.'),
+      spacer(),
+      h2('1.1 Problem Being Solved'),
+      para('The traditional approach requires MikroTik routers to have public IPs for the backend to reach them via the API. This document describes a VPN-based architecture where:'),
+      bullet('MikroTik routers initiate outbound VPN connections to the VPS — eliminating the need for public IPs'),
+      bullet('Each MikroTik gets a fixed tunnel IP — making API calls stable and predictable'),
+      bullet('No changes are needed in mikrotikService.js — only the router IP in the database changes'),
+      spacer(),
+      h2('1.2 Architecture'),
+      para('After setup, the system works as follows:'),
+      ...codeBlock([
+        '                    ┌─────────────────────────────┐',
+        '                    │         Your VPS             │',
+        '                    │                              │',
+        '                    │  OpenVPN Server (port 1194)  │',
+        '                    │  10.8.0.1 (tunnel gateway)   │',
+        '                    │                              │',
+        '                    │  Node.js App                 │',
+        '                    │  → connects to 10.8.0.x:8728 │',
+        '                    └──────────┬──────────────────┘',
+        '                               │ VPN tunnel (TCP 1194)',
+        '              ┌────────────────┼────────────────┐',
+        '              │                │                │',
+        '        10.8.0.6          10.8.0.10        10.8.0.14',
+        '    MikroTik Site A    MikroTik Site B   MikroTik Site C',
+        '    (any internet)     (behind NAT)      (dynamic IP)',
+      ]),
+      spacer(),
+      h2('1.3 Key Facts'),
+      new Table({
+        width: { size: 9360, type: WidthType.DXA },
+        columnWidths: [3500, 5860],
+        rows: [
+          tableRow([{ text: 'Item', width: 3500 }, { text: 'Details', width: 5860 }], true),
+          tableRow([{ text: 'VPS OS', width: 3500 }, { text: 'Ubuntu 24.04 LTS', width: 5860 }]),
+          tableRow([{ text: 'OpenVPN version', width: 3500 }, { text: '2.6.x (installed via apt)', width: 5860 }]),
+          tableRow([{ text: 'EasyRSA version', width: 3500 }, { text: '3.1.7', width: 5860 }]),
+          tableRow([{ text: 'Protocol', width: 3500 }, { text: 'TCP (RouterOS 6 does not support UDP)', width: 5860 }]),
+          tableRow([{ text: 'Port', width: 3500 }, { text: '1194', width: 5860 }]),
+          tableRow([{ text: 'Cipher', width: 3500 }, { text: 'AES-128-CBC (only CBC supported by RouterOS 6)', width: 5860 }]),
+          tableRow([{ text: 'Auth', width: 3500 }, { text: 'SHA1 (RouterOS 6 does not support SHA256)', width: 5860 }]),
+          tableRow([{ text: 'TLS Auth', width: 3500 }, { text: 'DISABLED (not supported by RouterOS 6)', width: 5860 }]),
+          tableRow([{ text: 'Tunnel subnet', width: 3500 }, { text: '10.8.0.0/24 (253 clients max)', width: 5860 }]),
+          tableRow([{ text: 'VPS tunnel IP', width: 3500 }, { text: '10.8.0.1', width: 5860 }]),
+          tableRow([{ text: 'Client IPs', width: 3500 }, { text: '10.8.0.6, 10.8.0.10, ... (fixed per CCD file)', width: 5860 }]),
+        ]
+      }),
+      spacer(),
+      note('RouterOS 6.x has significant limitations compared to RouterOS 7.x: TCP only, AES-CBC only, SHA1 only, no tls-auth, no tls-version parameter. All server settings must match these constraints.'),
+      new Paragraph({ children: [new PageBreak()] }),
+
+      // ═══════════════════════════════════════════════
+      // SECTION 2 — VPS SETUP (ONE TIME)
+      // ═══════════════════════════════════════════════
+      h1('2. VPS Setup (One Time Only)'),
+      para('Run these steps once on a fresh VPS. Do not repeat unless setting up a completely new server.'),
+
+      h2('2.1 Install Packages'),
+      ...codeBlock([
+        'sudo apt update',
+        'sudo apt install -y openvpn easy-rsa',
+      ]),
+
+      h2('2.2 Create Certificate Authority'),
+      ...codeBlock([
+        'make-cadir ~/openvpn-ca',
+        'cd ~/openvpn-ca',
+        './easyrsa init-pki',
+        './easyrsa build-ca nopass',
+        '# When prompted for Common Name, enter: SkyLink-CA',
+      ]),
+      note('At the Common Name prompt, type SkyLink-CA and press Enter. This is the CA name only.'),
+
+      h2('2.3 Generate Server Certificate'),
+      ...codeBlock([
+        'cd ~/openvpn-ca',
+        './easyrsa gen-req skylink-server nopass',
+        '# When prompted for Common Name — just press Enter to accept default',
+        './easyrsa sign-req server skylink-server',
+        '# Type "yes" when asked to confirm',
+      ]),
+      note('At the Common Name prompt for the SERVER cert, press Enter to accept the default (skylink-server). Do NOT type SkyLink-CA.'),
+
+      h2('2.4 Generate DH Parameters and TLS Key'),
+      ...codeBlock([
+        './easyrsa gen-dh',
+        '# This takes 1-2 minutes',
+        'openvpn --genkey secret ~/openvpn-ca/pki/ta.key',
+        '# ta.key is generated but NOT used in server config (RouterOS 6 incompatible)',
+      ]),
+
+      h2('2.5 Copy Files to OpenVPN Directory'),
+      ...codeBlock([
+        'sudo cp ~/openvpn-ca/pki/ca.crt /etc/openvpn/server/',
+        'sudo cp ~/openvpn-ca/pki/issued/skylink-server.crt /etc/openvpn/server/',
+        'sudo cp ~/openvpn-ca/pki/private/skylink-server.key /etc/openvpn/server/',
+        'sudo cp ~/openvpn-ca/pki/dh.pem /etc/openvpn/server/',
+        'sudo cp ~/openvpn-ca/pki/ta.key /etc/openvpn/server/',
+        '',
+        '# Create CCD directory (fixed IPs per client)',
+        'sudo mkdir -p /etc/openvpn/ccd',
+        '',
+        '# Create log directory',
+        'sudo mkdir -p /var/log/openvpn',
+      ]),
+
+      h2('2.6 Server Configuration File'),
+      para('Create the server config at /etc/openvpn/server/skylink-vpn.conf:'),
+      ...codeBlock([
+        'sudo nano /etc/openvpn/server/skylink-vpn.conf',
+      ]),
+      para('Paste exactly the following content:'),
+      ...codeBlock([
+        '# SkyLink OpenVPN Server Config',
+        'port 1194',
+        'proto tcp',
+        'dev tun',
+        '',
+        '# Certificates',
+        'ca   /etc/openvpn/server/ca.crt',
+        'cert /etc/openvpn/server/skylink-server.crt',
+        'key  /etc/openvpn/server/skylink-server.key',
+        'dh   /etc/openvpn/server/dh.pem',
+        '',
+        '# TLS auth DISABLED — not supported by RouterOS 6',
+        '#tls-auth /etc/openvpn/server/ta.key 0',
+        '',
+        '# Cipher settings — must match RouterOS 6 capabilities',
+        'cipher AES-128-CBC',
+        'data-ciphers AES-128-CBC',
+        'data-ciphers-fallback AES-128-CBC',
+        'auth SHA1',
+        '',
+        '# Tunnel network',
+        'server 10.8.0.0 255.255.255.0',
+        '',
+        '# Per-client fixed IP directory',
+        'client-config-dir /etc/openvpn/ccd',
+        '',
+        '# Keep client IPs stable across reconnects',
+        'ifconfig-pool-persist /etc/openvpn/server/ipp.txt',
+        '',
+        '# Keepalive',
+        'keepalive 10 120',
+        '',
+        '# Persistence',
+        'persist-key',
+        'persist-tun',
+        '',
+        '# Logging',
+        'status      /var/log/openvpn/status.log',
+        'log-append  /var/log/openvpn/openvpn.log',
+        'verb 3',
+        '',
+        '# Limits',
+        'max-clients 100',
+        '',
+        '# Security',
+        'user  nobody',
+        'group nogroup',
+      ]),
+      note('Do NOT add tls-version-min — RouterOS 6 does not support it and OpenVPN 2.6 will reject the config.'),
+
+      h2('2.7 Enable IP Forwarding'),
+      ...codeBlock([
+        '# Enable immediately',
+        'sudo sysctl -w net.ipv4.ip_forward=1',
+        '',
+        '# Make permanent across reboots',
+        'sudo sed -i \'s/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/\' /etc/sysctl.conf',
+        '',
+        '# Verify',
+        'sysctl net.ipv4.ip_forward',
+        '# Should output: net.ipv4.ip_forward = 1',
+      ]),
+
+      h2('2.8 Start and Enable the Service'),
+      ...codeBlock([
+        'sudo systemctl start "openvpn-server@skylink-vpn"',
+        'sudo systemctl enable "openvpn-server@skylink-vpn"',
+        'sudo systemctl status "openvpn-server@skylink-vpn"',
+        '',
+        '# Verify tunnel interface',
+        'ip addr show tun0',
+        '# Should show: inet 10.8.0.1',
+      ]),
+
+      h2('2.9 Open Firewall Port'),
+      ...codeBlock([
+        'sudo ufw allow 1194/tcp',
+        'sudo ufw status',
+      ]),
+      tip('Setup complete. VPS is now an OpenVPN server. Proceed to Section 3 for each new MikroTik.'),
+      new Paragraph({ children: [new PageBreak()] }),
+
+      // ═══════════════════════════════════════════════
+      // SECTION 3 — PER MIKROTIK SETUP
+      // ═══════════════════════════════════════════════
+      h1('3. Per-MikroTik Setup (Repeat for Each Router)'),
+      para('Follow these steps every time a new MikroTik router is onboarded into the system.'),
+
+      h2('3.1 Generate Client Certificate'),
+      para('Replace "client-nakuru-main" with a meaningful name for this router (e.g. client-nairobi-cbd, client-eldoret-main):'),
+      ...codeBlock([
+        'cd ~/openvpn-ca',
+        './easyrsa gen-req client-nakuru-main nopass',
+        '# ⚠️  IMPORTANT: When prompted for Common Name, press Enter to accept default',
+        '# Do NOT type anything — the default must match the client name exactly',
+        '',
+        './easyrsa sign-req client client-nakuru-main',
+        '# Type "yes" when asked to confirm',
+      ]),
+      note('The Common Name MUST match the client filename exactly. This is critical for CCD file lookup. Always press Enter at the prompt to accept the default.'),
+
+      h2('3.2 Assign Fixed Tunnel IP'),
+      para('Decide the tunnel IP for this router. IPs are assigned sequentially: 10.8.0.6, 10.8.0.10, 10.8.0.14, etc.'),
+      para('Create the CCD file — the filename must match the Common Name exactly:'),
+      ...codeBlock([
+        '# Replace "client-nakuru-main" with your client name',
+        '# Replace "10.8.0.6" with the next available IP',
+        'sudo bash -c \'echo "ifconfig-push 10.8.0.6 10.8.0.5" > /etc/openvpn/ccd/client-nakuru-main\'',
+        '',
+        '# Verify',
+        'sudo cat /etc/openvpn/ccd/client-nakuru-main',
+        '# Should output: ifconfig-push 10.8.0.6 10.8.0.5',
+      ]),
+      note('The CCD filename must match the certificate Common Name exactly — case sensitive. If they do not match, the client will get a dynamic IP instead of the fixed one.'),
+
+      h2('3.3 Extract Certificate Files'),
+      ...codeBlock([
+        'mkdir -p ~/mikrotik-files',
+        '',
+        '# CA certificate (same for all routers)',
+        'sudo cat /etc/openvpn/server/ca.crt > ~/mikrotik-files/ca.crt',
+        '',
+        '# Client-specific files',
+        'sudo cat ~/openvpn-ca/pki/issued/client-nakuru-main.crt > ~/mikrotik-files/client-nakuru-main.crt',
+        'sudo cat ~/openvpn-ca/pki/private/client-nakuru-main.key > ~/mikrotik-files/client-nakuru-main.key',
+      ]),
+
+      h2('3.4 Download to Local Machine'),
+      para('Run this on your LOCAL machine (not the VPS):'),
+      ...codeBlock([
+        'mkdir -p ~/Downloads/mikrotik-vpn',
+        'scp charles@YOUR_VPS_IP:~/mikrotik-files/* ~/Downloads/mikrotik-vpn/',
+      ]),
+
+      h2('3.5 Upload to MikroTik via Winbox'),
+      bullet('Open Winbox and connect to the MikroTik'),
+      bullet('Go to Files'),
+      bullet('Drag and drop all three files: ca.crt, client-nakuru-main.crt, client-nakuru-main.key'),
+
+      h2('3.6 Import Certificates on MikroTik'),
+      para('Run in MikroTik terminal:'),
+      ...codeBlock([
+        '/certificate import file-name=ca.crt passphrase=""',
+        '/certificate import file-name=client-nakuru-main.crt passphrase=""',
+        '/certificate import file-name=client-nakuru-main.key passphrase=""',
+        '',
+        '# Verify — check that K flag (private key) is present on client cert',
+        '/certificate print detail',
+        '# client cert should show: common-name="client-nakuru-main" key-usage=tls-client',
+      ]),
+
+      h2('3.7 Configure OVPN Client on MikroTik'),
+      para('Check the exact certificate name from the print detail output, then run as ONE single line:'),
+      ...codeBlock([
+        '/interface ovpn-client add name=skylink-vpn connect-to=YOUR_VPS_IP port=1194 mode=ip user=client-nakuru-main certificate=client-nakuru-main.crt_0 cipher=aes128 add-default-route=no disabled=no',
+      ]),
+      note('RouterOS 6 does not support: tls-version, auth=sha256, cipher=aes256. Use only: cipher=aes128, auth defaults to sha1 which is correct.'),
+
+      h2('3.8 Verify Connection'),
+      ...codeBlock([
+        '/interface ovpn-client monitor 0',
+        '# Expected output:',
+        '#   status: connected',
+        '#   encoding: AES-128-CBC/SHA1',
+        '#   mtu: 1500',
+        '',
+        '/ip address print',
+        '# Should show 10.8.0.X/32 on skylink-vpn interface',
+      ]),
+
+      h2('3.9 Update Router in MongoDB'),
+      para('Update the Router document — change the ip field from the public IP to the tunnel IP:'),
+      ...codeBlock([
+        '// Before:',
+        '{ ip: "102.210.42.46" }   // public IP',
+        '',
+        '// After:',
+        '{ ip: "10.8.0.6" }        // tunnel IP — same API calls, nothing else changes',
+      ]),
+      tip('From this point all API calls from Node.js go through the VPN tunnel automatically. No code changes needed.'),
+      new Paragraph({ children: [new PageBreak()] }),
+
+      // ═══════════════════════════════════════════════
+      // SECTION 4 — IP ALLOCATION TABLE
+      // ═══════════════════════════════════════════════
+      h1('4. Tunnel IP Allocation'),
+      para('Track assigned tunnel IPs here. Update this table each time a new router is onboarded.'),
+      new Table({
+        width: { size: 9360, type: WidthType.DXA },
+        columnWidths: [2000, 2500, 2500, 2360],
+        rows: [
+          tableRow([
+            { text: 'Tunnel IP', width: 2000 },
+            { text: 'Client Name', width: 2500 },
+            { text: 'Site', width: 2500 },
+            { text: 'Date Added', width: 2360 }
+          ], true),
+          tableRow([
+            { text: '10.8.0.1', width: 2000 },
+            { text: 'skylink-server (VPS)', width: 2500 },
+            { text: 'VPS — Server', width: 2500 },
+            { text: 'June 2026', width: 2360 }
+          ]),
+          tableRow([
+            { text: '10.8.0.6', width: 2000 },
+            { text: 'client-nakuru-main', width: 2500 },
+            { text: 'Nakuru Main', width: 2500 },
+            { text: 'June 8, 2026', width: 2360 }
+          ]),
+          tableRow([{ text: '10.8.0.10', width: 2000 }, { text: '', width: 2500 }, { text: '', width: 2500 }, { text: '', width: 2360 }]),
+          tableRow([{ text: '10.8.0.14', width: 2000 }, { text: '', width: 2500 }, { text: '', width: 2500 }, { text: '', width: 2360 }]),
+          tableRow([{ text: '10.8.0.18', width: 2000 }, { text: '', width: 2500 }, { text: '', width: 2500 }, { text: '', width: 2360 }]),
+          tableRow([{ text: '10.8.0.22', width: 2000 }, { text: '', width: 2500 }, { text: '', width: 2500 }, { text: '', width: 2360 }]),
+          tableRow([{ text: '10.8.0.26', width: 2000 }, { text: '', width: 2500 }, { text: '', width: 2500 }, { text: '', width: 2360 }]),
+          tableRow([{ text: '10.8.0.30', width: 2000 }, { text: '', width: 2500 }, { text: '', width: 2500 }, { text: '', width: 2360 }]),
+        ]
+      }),
+      spacer(),
+      note('OpenVPN assigns IPs in pairs. For client IP 10.8.0.6, the CCD file should read: ifconfig-push 10.8.0.6 10.8.0.5. Next client gets 10.8.0.10 (with peer 10.8.0.9), then 10.8.0.14, etc.'),
+      new Paragraph({ children: [new PageBreak()] }),
+
+      // ═══════════════════════════════════════════════
+      // SECTION 5 — TROUBLESHOOTING
+      // ═══════════════════════════════════════════════
+      h1('5. Troubleshooting'),
+
+      h2('5.1 Common Errors and Fixes'),
+      new Table({
+        width: { size: 9360, type: WidthType.DXA },
+        columnWidths: [3200, 6160],
+        rows: [
+          tableRow([{ text: 'Error', width: 3200 }, { text: 'Fix', width: 6160 }], true),
+          tableRow([{ text: 'TLS Error: cannot locate HMAC', width: 3200 }, { text: 'Comment out tls-auth in server config. RouterOS 6 does not support it.', width: 6160 }]),
+          tableRow([{ text: 'unknown cipher alg or key size', width: 3200 }, { text: 'Use cipher=aes128 on MikroTik. Also add data-ciphers AES-128-CBC to server config.', width: 6160 }]),
+          tableRow([{ text: 'No common cipher between server and client', width: 3200 }, { text: 'Add: data-ciphers AES-128-CBC and data-ciphers-fallback AES-128-CBC to server config.', width: 6160 }]),
+          tableRow([{ text: 'expected end of command', width: 3200 }, { text: 'MikroTik does not accept multi-line commands. Run as single line.', width: 6160 }]),
+          tableRow([{ text: 'input does not match certificate', width: 3200 }, { text: 'Use /certificate print detail to find the exact name including suffix (e.g. client-nakuru-main.crt_0)', width: 6160 }]),
+          tableRow([{ text: 'Client gets wrong/dynamic IP', width: 3200 }, { text: 'CCD filename must match cert Common Name exactly. Check with: ls /etc/openvpn/ccd/', width: 6160 }]),
+          tableRow([{ text: 'peer disconnected immediately', width: 3200 }, { text: 'Check /var/log/openvpn/openvpn.log on VPS for the specific error.', width: 6160 }]),
+        ]
+      }),
+
+      h2('5.2 Useful Commands'),
+      h3('On VPS:'),
+      ...codeBlock([
+        '# Check server status',
+        'sudo systemctl status "openvpn-server@skylink-vpn"',
+        '',
+        '# Watch live logs',
+        'sudo tail -f /var/log/openvpn/openvpn.log',
+        '',
+        '# See connected clients',
+        'sudo cat /var/log/openvpn/status.log',
+        '',
+        '# Restart server',
+        'sudo systemctl restart "openvpn-server@skylink-vpn"',
+        '',
+        '# List CCD files (one per router)',
+        'ls /etc/openvpn/ccd/',
+      ]),
+      h3('On MikroTik:'),
+      ...codeBlock([
+        '# Monitor VPN connection',
+        '/interface ovpn-client monitor 0',
+        '',
+        '# Check tunnel IP',
+        '/ip address print',
+        '',
+        '# View certificates',
+        '/certificate print detail',
+        '',
+        '# Restart VPN interface',
+        '/interface ovpn-client disable 0',
+        '/interface ovpn-client enable 0',
+      ]),
+      new Paragraph({ children: [new PageBreak()] }),
+
+      // ═══════════════════════════════════════════════
+      // SECTION 6 — REVOKING A CLIENT
+      // ═══════════════════════════════════════════════
+      h1('6. Revoking a Client Certificate'),
+      para('If a router is decommissioned or a certificate needs to be regenerated:'),
+      ...codeBlock([
+        'cd ~/openvpn-ca',
+        '',
+        '# Revoke the certificate',
+        './easyrsa revoke client-nakuru-main',
+        '# Type "yes" to confirm',
+        '',
+        '# Regenerate the CRL',
+        './easyrsa gen-crl',
+        '',
+        '# Remove the CCD file',
+        'sudo rm /etc/openvpn/ccd/client-nakuru-main',
+        '',
+        '# Restart OpenVPN to apply',
+        'sudo systemctl restart "openvpn-server@skylink-vpn"',
+      ]),
+      note('To add CRL checking to the server config, add: crl-verify /home/charles/openvpn-ca/pki/crl.pem. Currently not configured — revoked certs will be blocked on next server restart only.'),
+
+      spacer(),
+      sectionDivider(),
+      new Paragraph({ spacing: { before: 200, after: 80 }, alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: 'SkyLink Networks — Internal Documentation', size: 18, font: 'Arial', color: '888888', italics: true })] }),
+      new Paragraph({ alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: 'Do not distribute outside the engineering team', size: 18, font: 'Arial', color: '888888', italics: true })] }),
+    ]
+  }]
+});
+
+Packer.toBuffer(doc).then(buffer => {
+  fs.writeFileSync('/mnt/user-data/outputs/SkyLink_OpenVPN_Setup_Guide.docx', buffer);
+  console.log('Done');
+});
+EOF

@@ -11,12 +11,32 @@ const {
   getCustomersSubscriptionsByDate,
   getRevenueByPackage,
   getTodayEarnings,
-  getOnlineCustomersCount
+  getOnlineCustomersCount,
+  getCustomersBySubscriptionTimeline,
+  getCustomersSubscriptionsByDateRange,
+  getCustomersBySubscriptionDateRange,
+  getCustomerUsageSummary,
+  getUsageAnalytics
 } = require('../controllers/dashboardController');
 const { protect, applyRegionFilter } = require('../middleware/auth');
 
+
 router.use(protect);
 router.use(applyRegionFilter);
+
+router.post(
+  '/subscriptions-by-date-range',
+  protect,
+  applyRegionFilter,
+  getCustomersSubscriptionsByDateRange
+);
+ 
+router.post(
+  '/customers-by-date-range',
+  protect,
+  applyRegionFilter,
+  getCustomersBySubscriptionDateRange
+);
 
 router.get('/overview', getDashboardOverview);
 router.get('/revenue-chart', getRevenueChart);
@@ -29,5 +49,8 @@ router.post('/subscription-dates', getCustomersSubscriptionsByDate);
 router.get('/revenue-by-package', getRevenueByPackage);
 router.get('/today-earnings', getTodayEarnings);
 router.get('/online-customers', getOnlineCustomersCount);
+router.post('/customers-by-timeline',  getCustomersBySubscriptionTimeline);
+router.get('/usage-analytics',         protect, getUsageAnalytics );
+router.get('/customer-usage/:username', protect, getCustomerUsageSummary);
 
 module.exports = router;

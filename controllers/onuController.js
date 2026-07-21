@@ -6,6 +6,7 @@ const OLT = require('../models/OLT');
 const Customer = require('../models/Customer');
 const SystemLog = require('../models/SystemLog');
 const oltService = require('../services/olt');
+const genieacsService = require('../services/genieAcsNbiService');
 
 // ============================================
 // ONU CRUD OPERATIONS
@@ -66,11 +67,23 @@ exports.getOnus = asyncHandler(async (req, res, next) => {
 
   const total = await ONU.countDocuments(query);
 
+  // Enrich with live device state from GenieACS in one batched call, rather than
+  // trusting the DB's own status/signal/lastSeen fields (which only update when
+  // someone manually triggers a Telnet-based sync). GenieACS already has fresher
+  // data via periodic TR-069 Informs — no OLT session needed for this.
+  const serials = onus.map(o => o.serialNumber).filter(Boolean);
+  const genieBySerial = await genieacsService.getDevicesBySerials(serials);
+
+  const enrichedOnus = onus.map(onu => ({
+    ...onu,
+    liveStatus: genieacsService.summarizeDevice(genieBySerial.get(onu.serialNumber))
+  }));
+
   res.status(200).json({
     success: true,
     message: 'ONUs retrieved successfully',
     data: {
-      onus,
+      onus: enrichedOnus,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -96,15 +109,50 @@ exports.getOnu = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse(getResourceNotFoundMessage('ONU'), 404));
   }
 
-  // Check region access
   if (req.regionFilter.regionCode && onu.regionCode !== req.regionFilter.regionCode) {
     return next(new ErrorResponse('Access denied to this ONU', 403));
+  }
+
+  const includeLive = req.query.includeLive !== 'false'; // default true
+
+  let liveStatus = null;
+  if (includeLive) {
+    const genieDevice = await genieacsService.getDeviceBySerial(onu.serialNumber);
+    liveStatus = genieacsService.summarizeDevice(genieDevice);
   }
 
   res.status(200).json({
     success: true,
     message: 'ONU retrieved successfully',
-    data: onu
+    data: {
+      ...onu.toObject(),
+      liveStatus
+    }
+  });
+});
+
+/**
+ * @desc    Get live status from GenieACS for an ONU
+ * @route   GET /api/onus/:id/live-status
+ * @access  Private
+ */
+exports.getOnuLiveStatus = asyncHandler(async (req, res, next) => {
+  const onu = await ONU.findById(req.params.id).select('serialNumber regionCode');
+  if (!onu) {
+    return next(new ErrorResponse(getResourceNotFoundMessage('ONU'), 404));
+  }
+
+  // Check region access
+  if (req.regionFilter.regionCode && onu.regionCode !== req.regionFilter.regionCode) {
+    return next(new ErrorResponse('Access denied to this ONU', 403));
+  }
+
+  const genieDevice = await genieacsService.getDeviceBySerial(onu.serialNumber);
+  const liveStatus = genieacsService.summarizeDevice(genieDevice);
+
+  res.status(200).json({
+    success: true,
+    data: liveStatus
   });
 });
 

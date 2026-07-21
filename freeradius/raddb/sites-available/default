@@ -1,0 +1,413 @@
+server default {
+
+    # ============================================================
+    # LISTENERS
+    # ============================================================
+    listen {
+        type = auth
+        ipaddr = *
+        port = 0
+    }
+
+    listen {
+        type = acct
+        ipaddr = *
+        port = 0
+    }
+
+
+    # ============================================================
+    # AUTHORIZE
+    # ============================================================
+    authorize {
+        filter_username
+        preprocess
+
+        # --------------------------------------------------------
+        # HOTSPOT MAC NORMALIZATION
+        # --------------------------------------------------------
+        if (&NAS-Port-Type == Wireless-802.11) {
+            if (&User-Name =~ /^([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2})$/) {
+                update request {
+                    User-Name := "hs_%{toupper:%{1}%{2}%{3}%{4}%{5}%{6}}"
+                }
+            }
+        }
+
+        sql
+
+        # Only run expiration and logintime for PPPoE
+        if (&NAS-Port-Type != Wireless-802.11) {
+            expiration
+            logintime
+        }
+
+        update control {
+            Auth-Type := "HOTSPOT_POLICY"
+        }
+    }
+
+
+    # ============================================================
+    # AUTHENTICATE
+    # ============================================================
+    authenticate {
+        Auth-Type HOTSPOT_POLICY {
+
+            # Hotspot: always accept here — post-auth decides access level
+            if (&NAS-Port-Type == Wireless-802.11) {
+                ok
+            }
+
+            # PPPoE: reject unknown users immediately
+            elsif ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}'}" == 0) {
+                reject
+            }
+
+            else {
+                ok
+            }
+        }
+    }
+
+
+    # ============================================================
+    # POST-AUTH
+    # ============================================================
+    post-auth {
+
+        # ============================================================
+        # HOTSPOT FLOW
+        # Decision tree:
+        #   1. No radcheck entry  → new/unpaid MAC → DISABLED_USERS
+        #   2. Expiration passed  → expired        → DISABLED_USERS
+        #   3. Data quota hit     → over limit     → DISABLED_USERS
+        #   4. All good           → ALLOWED_USERS + rate limit
+        # ============================================================
+        if (&NAS-Port-Type == Wireless-802.11) {
+
+            update control {
+                Tmp-String-1 := "hotspot_new"
+            }
+
+            # Does this MAC have a paid entry?
+            if ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}'}" > 0) {
+                update control {
+                    Tmp-String-1 := "hotspot_known"
+                }
+            }
+
+            # Log the auth attempt
+            "%{sql:INSERT INTO radius_auth_log (username, password, calling_station_id, nas_ip_address, auth_result) VALUES ('%{User-Name}', '', '%{Calling-Station-Id}', '%{NAS-IP-Address}', '%{control:Tmp-String-1}')}"
+
+            if (&control:Tmp-String-1 == "hotspot_known") {
+
+                # Fetch usage and limit
+                update control {
+                    Tmp-Integer-0 := "%{sql:SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0) FROM radacct WHERE username='%{User-Name}' AND acctstarttime >= COALESCE((SELECT cycle_start FROM user_billing_cycle WHERE username='%{User-Name}'), DATE_FORMAT(NOW(),'%Y-%m-01'))}"
+                    Tmp-Integer-1 := "%{sql:SELECT CAST(COALESCE(value, 0) AS UNSIGNED) FROM radcheck WHERE username='%{User-Name}' AND attribute='Max-Monthly-Traffic' LIMIT 1}"
+                }
+
+                # Check: Has their session expired?
+            if ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}' AND attribute='Expiration' AND STR_TO_DATE(value, '%%e %%b %%Y %%H:%%i:%%s') < NOW()}" > 0) {
+                    update reply {
+                        Mikrotik-Address-List := "DISABLED_USERS"
+                        Acct-Interim-Interval := 120
+                        Reply-Message         := "Session expired. Please renew to continue."
+                    }
+                    "%{sql:INSERT INTO radius_auth_log (username, password, calling_station_id, nas_ip_address, auth_result) VALUES ('%{User-Name}', '', '%{Calling-Station-Id}', '%{NAS-IP-Address}', 'hotspot_expired')}"
+                }
+
+                # Check: Data quota exceeded?
+                elsif ((&control:Tmp-Integer-1 > 0) && (&control:Tmp-Integer-0 >= &control:Tmp-Integer-1)) {
+                    update reply {
+                        Mikrotik-Address-List := "DISABLED_USERS"
+                        Acct-Interim-Interval := 120
+                        Reply-Message         := "Data limit reached. Please top up."
+                    }
+                    "%{sql:INSERT INTO radius_auth_log (username, password, calling_station_id, nas_ip_address, auth_result) VALUES ('%{User-Name}', '', '%{Calling-Station-Id}', '%{NAS-IP-Address}', 'hotspot_over_quota')}"
+                }
+
+                # All checks passed — give full internet access
+                else {
+                    update reply {
+                        Mikrotik-Address-List := "ALLOWED_USERS"
+                        Acct-Interim-Interval := 120
+                    }
+
+                    update control {
+                        Tmp-String-0 := "%{sql:SELECT groupname FROM radusergroup WHERE username='%{User-Name}' ORDER BY priority LIMIT 1}"
+                    }
+
+                    if ("%{control:Tmp-String-0}" != "") {
+                        update reply {
+                            Mikrotik-Rate-Limit := "%{sql:SELECT value FROM radgroupreply WHERE groupname='%{control:Tmp-String-0}' AND attribute='Mikrotik-Rate-Limit' LIMIT 1}"
+                        }
+                    }
+
+                    update control {
+                        Tmp-String-0 !* ANY
+                    }
+
+                    "%{sql:INSERT INTO radius_auth_log (username, password, calling_station_id, nas_ip_address, auth_result) VALUES ('%{User-Name}', '', '%{Calling-Station-Id}', '%{NAS-IP-Address}', 'hotspot_active')}"
+                }
+            }
+
+            else {
+                # No entry — new or unpaid MAC
+                update reply {
+                    Mikrotik-Address-List := "DISABLED_USERS"
+                    Acct-Interim-Interval := 120
+                    Reply-Message         := "Please complete payment to access the internet."
+                }
+            }
+
+            # Cleanup
+            update control {
+                Tmp-String-0  !* ANY
+                Tmp-String-1  !* ANY
+                Tmp-Integer-0 !* ANY
+                Tmp-Integer-1 !* ANY
+            }
+
+            sql
+        }
+
+        # ============================================================
+        # PPPOE FLOW
+        # ============================================================
+        else {
+
+            # ---- Step 1: Determine auth result for logging ----
+            update control {
+                Tmp-String-0 := "correct"
+            }
+
+            if ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}'}" == 0) {
+                update control {
+                    Tmp-String-0 := "no_user"
+                }
+            }
+            elsif ("%{sql:SELECT value FROM radcheck WHERE username='%{User-Name}' AND attribute='Cleartext-Password' LIMIT 1}" != "%{User-Password}") {
+                update control {
+                    Tmp-String-0 := "wrong_password"
+                }
+            }
+            elsif ("%{sql:SELECT COUNT(*) FROM radusergroup WHERE username='%{User-Name}' AND groupname='DISABLED'}" > 0) {
+                update control {
+                    Tmp-String-0 := "disabled"
+                }
+                if ("%{sql:SELECT COUNT(*) FROM radius_pending_activation WHERE username='%{User-Name}'}" > 0) {
+                    update control {
+                        Tmp-String-0 := "correct"
+                    }
+                }
+            }
+            elsif ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}' AND attribute='Calling-Station-Id'}" > 0 && \
+                   "%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}' AND attribute='Calling-Station-Id' AND value='%{Calling-Station-Id}'}" == 0) {
+                update control {
+                    Tmp-String-0 := "mac_mismatch"
+                }
+            }
+
+            # Log the auth attempt
+            "%{sql:INSERT INTO radius_auth_log (username, password, calling_station_id, nas_ip_address, auth_result) VALUES ('%{User-Name}', '%{base64:%{User-Password}}', '%{Calling-Station-Id}', '%{NAS-IP-Address}', '%{control:Tmp-String-0}')}"
+
+            # ---- Step 2: Fetch monthly usage and limit ----
+            update control {
+                Tmp-Integer-0 := "%{sql:SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0) FROM radacct WHERE username='%{User-Name}' AND acctstarttime >= COALESCE((SELECT cycle_start FROM user_billing_cycle WHERE username='%{User-Name}'), DATE_FORMAT(NOW(),'%Y-%m-01'))}"
+                Tmp-Integer-1 := "%{sql:SELECT CAST(COALESCE(value, 0) AS UNSIGNED) FROM radcheck WHERE username='%{User-Name}' AND attribute='Max-Monthly-Traffic' LIMIT 1}"
+            }
+
+            # ---- Step 3: Reply based on checks ----
+
+            if ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}'}" == 0) {
+                update reply {
+                    Framed-Pool           := "expired-pool"
+                    Acct-Interim-Interval := 120
+                    Mikrotik-Address-List := "DISABLED_USERS"
+                    Reply-Message         := "User does not exist"
+                }
+                update reply { Mikrotik-Rate-Limit !* ANY }
+            }
+
+            elsif ("%{sql:SELECT value FROM radcheck WHERE username='%{User-Name}' AND attribute='Cleartext-Password' LIMIT 1}" != "%{User-Password}") {
+                update reply {
+                    Framed-Pool           := "expired-pool"
+                    Acct-Interim-Interval := 120
+                    Mikrotik-Address-List := "DISABLED_USERS"
+                    Reply-Message         := "Invalid credentials"
+                }
+                update reply { Mikrotik-Rate-Limit !* ANY }
+            }
+
+            elsif ("%{sql:SELECT COUNT(*) FROM radusergroup WHERE username='%{User-Name}' AND groupname='DISABLED'}" > 0) {
+
+                if ("%{sql:SELECT COUNT(*) FROM radius_pending_activation WHERE username='%{User-Name}'}" > 0) {
+
+                    update reply {
+                        Framed-Pool           := "active-pool"
+                        Mikrotik-Address-List := "ALLOWED_USERS"
+                        Acct-Interim-Interval := 120
+                    }
+
+                    update control {
+                        Tmp-String-0 := "%{sql:SELECT groupname FROM radusergroup WHERE username='%{User-Name}' AND groupname != 'DISABLED' ORDER BY priority LIMIT 1}"
+                    }
+
+                    if ("%{control:Tmp-String-0}" != "") {
+                        update reply {
+                            Mikrotik-Rate-Limit := "%{sql:SELECT value FROM radgroupreply WHERE groupname='%{control:Tmp-String-0}' AND attribute='Mikrotik-Rate-Limit' LIMIT 1}"
+                        }
+                    }
+
+                    exec_activate
+
+                    update control {
+                        Tmp-String-0 !* ANY
+                    }
+
+                } else {
+                    update reply {
+                        Framed-Pool           := "expired-pool"
+                        Acct-Interim-Interval := 120
+                        Mikrotik-Address-List := "DISABLED_USERS"
+                        Reply-Message         := "Account disabled. Please renew your subscription."
+                    }
+                    update reply { Mikrotik-Rate-Limit !* ANY }
+                }
+            }
+
+            else {
+                update control {
+                    Tmp-String-0 := "%{sql:SELECT groupname FROM radusergroup WHERE username='%{User-Name}' ORDER BY priority LIMIT 1}"
+                }
+
+                if ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}' AND attribute='Calling-Station-Id'}" > 0 && \
+                    "%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}' AND attribute='Calling-Station-Id' AND value='%{Calling-Station-Id}'}" == 0) {
+                    update reply {
+                        Framed-Pool           := "expired-pool"
+                        Mikrotik-Address-List := "DISABLED_USERS"
+                        Reply-Message         := "Unauthorized MAC device"
+                        Acct-Interim-Interval := 120
+                    }
+                    update reply { Mikrotik-Rate-Limit !* ANY }
+                }
+                else {
+                    update reply {
+                        Framed-Pool           := "active-pool"
+                        Mikrotik-Address-List := "ALLOWED_USERS"
+                        Acct-Interim-Interval := 120
+                    }
+
+                    if ((&control:Tmp-Integer-1 > 0) && (&control:Tmp-Integer-0 >= &control:Tmp-Integer-1)) {
+                        update reply {
+                            Mikrotik-Rate-Limit := "%{sql:SELECT value FROM radgroupreply WHERE groupname=CONCAT('THROTTLED_','%{control:Tmp-String-0}') AND attribute='Mikrotik-Rate-Limit' LIMIT 1}"
+                            Reply-Message       := "FUP limit reached. Speed reduced."
+                        }
+                    }
+                    else {
+                        update reply {
+                            Mikrotik-Rate-Limit := "%{sql:SELECT value FROM radgroupreply WHERE groupname='%{control:Tmp-String-0}' AND attribute='Mikrotik-Rate-Limit' LIMIT 1}"
+                        }
+                    }
+                }
+            }
+
+            # Cleanup
+            update control {
+                Tmp-Integer-0 !* ANY
+                Tmp-Integer-1 !* ANY
+                Tmp-String-0  !* ANY
+            }
+
+            sql
+        }
+    }
+
+
+    # ============================================================
+    # ACCOUNTINg
+    # ============================================================
+
+accounting {
+
+    # Normalize hotspot MAC username for accounting
+    if (&NAS-Port-Type == Wireless-802.11) {
+        if (&User-Name =~ /^([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2}):([0-9A-Fa-f]{2})$/) {
+            update request {
+                User-Name := "hs_%{toupper:%{1}%{2}%{3}%{4}%{5}%{6}}"
+            }
+        }
+    }
+
+    # Generate unique session ID if missing
+    if (!&Acct-Unique-Session-Id || (&Acct-Unique-Session-Id == "")) {
+        update request {
+            &Acct-Unique-Session-Id := "%{md5:%{User-Name}%{Acct-Session-Id}%{NAS-IP-Address}%{NAS-Port}}"
+        }
+    }
+
+    # ============================================================
+    # THE RESTORED ONLINE FIX: Re-open any closed session with the same unique ID
+    # This brings users back online instantly on your dashboard
+    # ============================================================
+    if (&Acct-Status-Type == "Interim-Update" || &Acct-Status-Type == "Start") {
+        "%{sql:UPDATE radacct SET acctstoptime = NULL WHERE AcctUniqueId = '%{Acct-Unique-Session-Id}' AND acctstoptime IS NOT NULL}"
+    }
+
+    # ============================================================
+    # HOTSPOT: Check expiration/quota during accounting
+    # Force re-authentication if expired or over quota
+    # ============================================================
+    if (&NAS-Port-Type == Wireless-802.11) {
+        
+        # Check if user has expired
+        if ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}' AND attribute='Expiration' AND STR_TO_DATE(value, '%%e %%b %%Y %%H:%%i:%%s') < NOW()}" > 0) {
+            
+            exec_send_disconnect
+            
+            # Log the forced disconnect
+            "%{sql:INSERT INTO radius_auth_log (username, password, calling_station_id, nas_ip_address, auth_result) VALUES ('%{User-Name}', '', '%{Calling-Station-Id}', '%{NAS-IP-Address}', 'hotspot_forced_disconnect_expired')}"
+        }
+        
+        # Check data quota (only if not already expired)
+        elsif ("%{sql:SELECT COUNT(*) FROM radcheck WHERE username='%{User-Name}'}" > 0) {
+            
+            update control {
+                Tmp-Integer-0 := "%{sql:SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0) FROM radacct WHERE username='%{User-Name}' AND acctstarttime >= COALESCE((SELECT cycle_start FROM user_billing_cycle WHERE username='%{User-Name}'), DATE_FORMAT(NOW(),'%Y-%m-01'))}"
+                Tmp-Integer-1 := "%{sql:SELECT CAST(COALESCE(value, 0) AS UNSIGNED) FROM radcheck WHERE username='%{User-Name}' AND attribute='Max-Monthly-Traffic' LIMIT 1}"
+            }
+            
+            if ((&control:Tmp-Integer-1 > 0) && (&control:Tmp-Integer-0 >= &control:Tmp-Integer-1)) {
+                
+                exec_send_disconnect
+                
+                # Log the forced disconnect
+                "%{sql:INSERT INTO radius_auth_log (username, password, calling_station_id, nas_ip_address, auth_result) VALUES ('%{User-Name}', '', '%{Calling-Station-Id}', '%{NAS-IP-Address}', 'hotspot_forced_disconnect_over_quota')}"
+            }
+        }
+        
+        # Cleanup temp attributes
+        update control {
+            Tmp-Integer-0 !* ANY
+            Tmp-Integer-1 !* ANY
+        }
+    }
+
+    # Ensure session ID is never empty
+    if (!&Acct-Session-Id || (&Acct-Session-Id == "")) {
+        update request {
+            &Acct-Session-Id := "%{User-Name}-%{NAS-IP-Address}-%{NAS-Port}-%{integer:Acct-Session-Time}-%{integer:Event-Timestamp}"
+        }
+    }
+
+    sql
+    exec
+}
+
+
+
+
+
+}

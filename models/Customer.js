@@ -39,6 +39,12 @@ const CustomerSchema = new Schema({
     // Format: SKY0001, SKN0045, PFT0099
     // This becomes their PPPoE username
   },
+
+  category: {
+    type: String,
+    enum: ['residential', 'business', 'government'],
+    default: 'residential'
+  },
   
   regionCode: {
     type: String,
@@ -85,12 +91,20 @@ const CustomerSchema = new Schema({
     required: function() { return this.isChild === true; }
   },
 
+  shared: {
+    expiryWithParent: { type: Boolean, default: false },
+    packageWithParent: { type: Boolean, default: false }
+  },
+  
+  sharedExpiry: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Customer' }],
+  sharedPackage: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Customer' }],
+
   renewals: [
     {
       dateRenewed: Date,
       method: {
         type: String,
-        enum: ['stk', 'wallet', 'manual', 'direct']
+        enum: ['stk', 'wallet', 'manual', 'direct', 'deposit', 'wallet_auto', 'transfer']
       }
     }
   ],
@@ -173,23 +187,23 @@ const CustomerSchema = new Schema({
   cpe: {
     serialNumber: {
       type: String, 
-      required: true
+      required: false
     },
     macAddress: {
       type: String,
-      required: true
+      required: false
     },
     model: {
       type: String,
-      required: true
+      required: false
     },
     wifiName: {
       type: String,
-      required: true
+      required: false
     },
     wifiPassword: {
       type: String,
-      required: true
+      required: false
     }
   },
   
@@ -273,6 +287,11 @@ const CustomerSchema = new Schema({
     nextBillingDate: Date
   },
 
+  waitingForSession: {
+    type: Boolean,
+    default: false
+  },
+
   // Connection Status
   connectionStatus: {
     status: { type: String, enum: ['online', 'offline', 'online-no-internet', 'unknown'], default: 'unknown' },
@@ -297,6 +316,99 @@ const CustomerSchema = new Schema({
   // RADIUS Integration
   radiusId: String,
   
+  retention: [{
+    // Basic Call Information
+    callDate: {
+      type: Date,
+      required: true,
+      default: Date.now
+    },
+    
+    calledBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    
+    // Call Outcome
+    callStatus: {
+      type: String,
+      enum: ['successful', 'failed'],
+      required: true
+    },
+    
+    // If call failed
+    failureReason: {
+      type: String,
+      enum: ['unreachable', 'not_picking', 'other'],
+      required: function() {
+        return this.callStatus === 'failed';
+      }
+    },
+    
+    // If call was successful
+    callType: {
+      type: String,
+      enum: ['service_follow_up', 'retention'],
+      required: function() {
+        return this.callStatus === 'successful';
+      }
+    },
+    
+    // For Service Follow-Up calls
+    serviceSatisfaction: {
+      type: String,
+      enum: ['satisfied', 'averagely_satisfied', 'not_satisfied'],
+      required: function() {
+        return this.callStatus === 'successful' && this.callType === 'service_follow_up';
+      }
+    },
+    
+    // For Retention calls
+    retentionOutcome: {
+      type: String,
+      enum: ['renewed', 'to_renew', 'changed_provider'],
+      required: function() {
+        return this.callStatus === 'successful' && this.callType === 'retention';
+      }
+    },
+    
+    // Router Collection (for changed_provider cases)
+    routerCollection: {
+      status: {
+        type: String,
+        enum: ['pending', 'scheduled', 'collected', 'refused'],
+      },
+      scheduledDate: Date,
+      collectedDate: Date,
+      collectedBy: {
+        type: Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    },
+    
+    // Description/Notes from the call
+    description: {
+      type: String,
+      required: function() {
+        return this.callStatus === 'successful';
+      }
+    },
+    
+    // Account Changes resulting from this interaction
+    accountAction: {
+      type: String,
+      enum: ['account_paused', 'account_disabled', 'account_resumed', 'none'],
+      default: 'none'
+    },
+    
+    actionDate: {
+      type: Date,
+      required: function() {
+        return this.accountAction !== 'none';
+      }
+    }
+  }],
   // Account Status
   isActive: {
     type: Boolean,
@@ -311,12 +423,14 @@ const CustomerSchema = new Schema({
     addedAt: { type: Date, default: Date.now }
   }],
 
-  lastExpiryWarningSent: {
+  lastExpiryWarningSentAt: {
     type: Date,
     default: null,
   },
 
   lastExpiryWarningExpiry: { type: Date, default: null },
+  lastExpiryNoticeSent: { type: Date, default: null },
+  
   
   createdBy: { type: Schema.Types.ObjectId, ref: 'Admin' }
 }, {
@@ -327,18 +441,39 @@ const CustomerSchema = new Schema({
 CustomerSchema.index({ isChild: 1 });
 CustomerSchema.index({ parentAccount: 1 });
 CustomerSchema.index({ accountId: 1 });
-// CustomerSchema.index(
-//   { phoneNumber: 1 },
-//   {
-//     unique: true,
-//     partialFilterExpression: { isChild: false }
-//   }
-// );
+// Remove the old commented unique index, add these:
+
+// Ensure phoneNumber + regionCode is unique
+// Primary accounts (isChild: false) must have unique phoneNumber per region
+CustomerSchema.index(
+  { phoneNumber: 1, regionCode: 1 },
+  { unique: true, partialFilterExpression: { isChild: false } }
+);
+
+// Alternate phone unique only for primary accounts
+CustomerSchema.index(
+  { alternatePhoneNumber: 1, regionCode: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { isChild: false } }
+);
+
+// Optional: hashed versions for fast lookups
+CustomerSchema.index(
+  { hashedPhone: 1, regionCode: 1 },
+  { unique: true, partialFilterExpression: { isChild: false } }
+);
+CustomerSchema.index(
+  { hashedAlternatePhone: 1, regionCode: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { isChild: false } }
+);
+
+
 CustomerSchema.index({ regionCode: 1, 'subscription.status': 1 });
 CustomerSchema.index({ siteId: 1, isActive: 1 });
 CustomerSchema.index({ 'pppoe.username': 1 });
 CustomerSchema.index({ 'subscription.expiresAt': 1 });
 CustomerSchema.index({ city: 1, subLocation: 1, localArea: 1 });
+CustomerSchema.index({ 'shared.expiryWithParent': 1 });
+CustomerSchema.index({ 'shared.packageWithParent': 1 });
 
 
 

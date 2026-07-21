@@ -7,19 +7,21 @@ const {
   getSmsBalance,
   getDeliveryStatus,
   getSmsLogs,
-  testFilter
+  testFilter,
+  getBulkSmsJobStatus
 
 } = require('../controllers/smsController');
-const { protect, adminOnly } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 
 router.use(protect);
 
 router.post('/send', sendSingleSms);
-router.post('/bulk', adminOnly, sendBulkByFilter);
-router.post('/personalized', adminOnly, sendPersonalizedByFilter);
+router.post('/bulk', sendBulkByFilter);
+router.post('/personalized', sendPersonalizedByFilter);
 router.get('/balance', getSmsBalance);
 router.get('/status/:messageId', getDeliveryStatus);
-router.get('/logs', adminOnly, getSmsLogs);
-router.post('/test-filter', adminOnly, testFilter);
+router.get('/logs', getSmsLogs);
+router.post('/test-filter', testFilter);
+router.get('/jobs/:jobId', getBulkSmsJobStatus);
 
 module.exports = router;

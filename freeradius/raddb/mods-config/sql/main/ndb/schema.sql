@@ -1,9 +1,11 @@
 ###########################################################################
-# $Id$                 #
+# $Id: d115d0643d96cc852d5b28d7f68fdf8a95acbe82 $                 #
 #                                                                         #
 #  schema.sql                       rlm_sql - FreeRADIUS SQL Module       #
 #                                                                         #
-#     Database schema for MySQL rlm_sql module                            #
+#     Database schema for MySQL Cluster.				  #
+#     The only difference between this file and ../mysql/schema.sql       #
+#     is the definition of the storage engine.                            #
 #                                                                         #
 #     To load:                                                            #
 #         mysql -uroot -prootpass radius < schema.sql                     #
@@ -14,7 +16,7 @@
 # Table structure for table 'radacct'
 #
 
-CREATE TABLE IF NOT EXISTS radacct (
+CREATE TABLE radacct (
   radacctid bigint(21) NOT NULL auto_increment,
   acctsessionid varchar(64) NOT NULL default '',
   acctuniqueid varchar(32) NOT NULL default '',
@@ -57,15 +59,14 @@ CREATE TABLE IF NOT EXISTS radacct (
   KEY acctstarttime (acctstarttime),
   KEY acctinterval (acctinterval),
   KEY acctstoptime (acctstoptime),
-  KEY nasipaddress (nasipaddress),
-  KEY class (class)
-) ENGINE = INNODB;
+  KEY nasipaddress (nasipaddress)
+) ENGINE=ndbcluster;
 
 #
 # Table structure for table 'radcheck'
 #
 
-CREATE TABLE IF NOT EXISTS radcheck (
+CREATE TABLE radcheck (
   id int(11) unsigned NOT NULL auto_increment,
   username varchar(64) NOT NULL default '',
   attribute varchar(64)  NOT NULL default '',
@@ -73,13 +74,13 @@ CREATE TABLE IF NOT EXISTS radcheck (
   value varchar(253) NOT NULL default '',
   PRIMARY KEY  (id),
   KEY username (username(32))
-);
+) ENGINE=ndbcluster;
 
 #
 # Table structure for table 'radgroupcheck'
 #
 
-CREATE TABLE IF NOT EXISTS radgroupcheck (
+CREATE TABLE radgroupcheck (
   id int(11) unsigned NOT NULL auto_increment,
   groupname varchar(64) NOT NULL default '',
   attribute varchar(64)  NOT NULL default '',
@@ -87,13 +88,13 @@ CREATE TABLE IF NOT EXISTS radgroupcheck (
   value varchar(253)  NOT NULL default '',
   PRIMARY KEY  (id),
   KEY groupname (groupname(32))
-);
+) ENGINE=ndbcluster;
 
 #
 # Table structure for table 'radgroupreply'
 #
 
-CREATE TABLE IF NOT EXISTS radgroupreply (
+CREATE TABLE radgroupreply (
   id int(11) unsigned NOT NULL auto_increment,
   groupname varchar(64) NOT NULL default '',
   attribute varchar(64)  NOT NULL default '',
@@ -101,13 +102,13 @@ CREATE TABLE IF NOT EXISTS radgroupreply (
   value varchar(253)  NOT NULL default '',
   PRIMARY KEY  (id),
   KEY groupname (groupname(32))
-);
+) ENGINE=ndbcluster;
 
 #
 # Table structure for table 'radreply'
 #
 
-CREATE TABLE IF NOT EXISTS radreply (
+CREATE TABLE radreply (
   id int(11) unsigned NOT NULL auto_increment,
   username varchar(64) NOT NULL default '',
   attribute varchar(64) NOT NULL default '',
@@ -115,65 +116,29 @@ CREATE TABLE IF NOT EXISTS radreply (
   value varchar(253) NOT NULL default '',
   PRIMARY KEY  (id),
   KEY username (username(32))
-);
+) ENGINE=ndbcluster;
 
 
 #
 # Table structure for table 'radusergroup'
 #
 
-CREATE TABLE IF NOT EXISTS radusergroup (
-  id int(11) unsigned NOT NULL auto_increment,
+CREATE TABLE radusergroup (
   username varchar(64) NOT NULL default '',
   groupname varchar(64) NOT NULL default '',
   priority int(11) NOT NULL default '1',
-  PRIMARY KEY  (id),
   KEY username (username(32))
-);
+) ENGINE=ndbcluster;
 
 #
 # Table structure for table 'radpostauth'
 #
-# Note: MySQL versions since 5.6.4 support fractional precision timestamps
-#        which we use here. Replace the authdate definition with the following
-#        if your software is too old:
-#
-#   authdate timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-#
-CREATE TABLE IF NOT EXISTS radpostauth (
+
+CREATE TABLE radpostauth (
   id int(11) NOT NULL auto_increment,
   username varchar(64) NOT NULL default '',
   pass varchar(64) NOT NULL default '',
   reply varchar(32) NOT NULL default '',
-  authdate timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-  class varchar(64) default NULL,
-  PRIMARY KEY  (id),
-  KEY username (username),
-  KEY class (class)
-) ENGINE = INNODB;
-
-#
-# Table structure for table 'nas'
-#
-CREATE TABLE IF NOT EXISTS nas (
-  id int(10) NOT NULL auto_increment,
-  nasname varchar(128) NOT NULL,
-  shortname varchar(32),
-  type varchar(30) DEFAULT 'other',
-  ports int(5),
-  secret varchar(60) DEFAULT 'secret' NOT NULL,
-  server varchar(64),
-  community varchar(50),
-  description varchar(200) DEFAULT 'RADIUS Client',
-  PRIMARY KEY (id),
-  KEY nasname (nasname)
-) ENGINE = INNODB;
-
-#
-# Table structure for table 'nasreload'
-#
-CREATE TABLE IF NOT EXISTS nasreload (
-  nasipaddress varchar(15) NOT NULL,
-  reloadtime datetime NOT NULL,
-  PRIMARY KEY (nasipaddress)
-) ENGINE = INNODB;
+  authdate timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY  (id)
+) ENGINE=ndbcluster;

@@ -11,7 +11,7 @@ const SmsLogSchema = new Schema({
   type: {
     type: String,
     enum: ['payment_confirmation', 'subscription_renewal', 'expiry_warning',
-           'expiry_notice', 'welcome', 'general', 'bulk', 'personalized', 'otp'],
+           'expiry_notice', 'welcome', 'general', 'bulk', 'personalized', 'otp', 'voucher_codes'],
     required: true
   },
   regionCode: { type: String, uppercase: true },

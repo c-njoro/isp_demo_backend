@@ -24,7 +24,7 @@ class ConnectionStatusCron {
    * Start the cron job
    * @param {string} schedule - Cron schedule (default: every 10 minutes)
    */
-  static start(schedule = '*/10 * * * *') {
+  static start(schedule = '*/30 * * * *') {
     console.log('🕐 Starting Connection Status Cron Job...');
     console.log(`   Schedule: ${schedule}`);
     

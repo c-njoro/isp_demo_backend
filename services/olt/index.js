@@ -121,6 +121,19 @@ class OLTServiceFactory {
     return await service.authorizeOnu(olt, serialNumber, ponPort, onuId);
   }
 
+
+  /**
+   * Authorize a newly discovered ONU using the SKYLINK Profile Architecture
+   */
+  async authorizeNewOnuSkylink(olt, params) {
+    const service = this._getService(olt);
+    if (typeof service.authorizeNewOnuSkylink !== 'function') {
+      throw new Error(`Skylink provisioning is not supported for ${olt.brand} OLTs yet.`);
+    }
+    return await service.authorizeNewOnuSkylink(olt, params);
+  }
+
+  
   /**
    * Deauthorize/Remove ONU
    */

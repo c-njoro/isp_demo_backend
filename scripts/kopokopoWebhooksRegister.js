@@ -14,16 +14,16 @@ const axios = require('axios');
 // ============================================
 const CONFIG = {
   // Kopo Kopo credentials (REPLACE with your real values)
-  clientId: 'fgzx-s0HC5_stojqaqZaqqbXEByWbMmsBV-Wx-wTluI',       // <-- CHANGE THIS
-  clientSecret: 'K_UX0GcSk7GacuspjOlPjRcQxbTJEe3ZSVPYO4x4Pb0', // <-- CHANGE THIS
-  apiKey: '97eb8ae6f5e88c4edc11a89c4cf3ecb4d68a4544',           // <-- CHANGE THIS (optional, for signature)
-  tillNumber: '5447591',            // Your till number
+  clientId: '79XgcWho8fYtOGDOHygsjKzMKw2bnI3zvaJfqcDm96A',       // <-- CHANGE THIS
+  clientSecret: '56lAd_1jtHgbHhAqBf_D4P9A7yfIWsuilemDlhrtdus', // <-- CHANGE THIS
+  apiKey: 'YggkQOyoS-dOXYsM7qqNp9PQUQHHCjJLEP1a3QbxycE',           // <-- CHANGE THIS (optional, for signature)
+  tillNumber: 'K00000',            // Your till number
   
   // Environment: 'sandbox' or 'production'
-  environment: 'production',
+  environment: 'sandbox',
   
   // Your webhook endpoint (must be publicly accessible, HTTPS)
-  webhookUrl: 'https://billing.skylinknetworks.co.ke/api/payments/kopokopo/webhook',
+  webhookUrl: 'https://f843-102-210-40-238.ngrok-free.app/api/payments/kopokopo/webhook',
 };
 
 // Base URLs

@@ -1,0 +1,24 @@
+sql {
+    driver = "rlm_sql_mysql"
+    dialect = "mysql"
+
+    server = "${RADIUS_DB_HOST}"
+    port = 3306
+    login = "radius"
+    password = "${RADIUS_DB_PASSWORD}"
+    radius_db = "radius"
+
+    accounting_table = "radacct"
+    postauth_table = "radpostauth"
+    authcheck_table = "radcheck"
+    authreply_table = "radreply"
+    groupcheck_table = "radgroupcheck"
+    groupreply_table = "radgroupreply"
+    usergroup_table = "radusergroup"
+
+    read_clients = yes
+    client_table = "nas"
+
+    group_attribute = "SQL-Group"
+    $INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+}

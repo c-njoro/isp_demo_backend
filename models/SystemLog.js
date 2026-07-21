@@ -8,6 +8,7 @@ const SystemLogSchema = new Schema(
       required: true,
       enum: [
         "admin_action",
+        'subscription_activation',
         "auto_deactivation",
         "auto_renewal",
         "child_account_created",
@@ -54,7 +55,27 @@ const SystemLogSchema = new Schema(
         'expense_deducted',
         'radius_sync',
         'hotspot_activation',
-        'radius_sync_single'
+        'radius_sync_single',
+        'payment_initiated',
+        'retention_record',
+        'radius_sync_mismatched',
+        'radius_sync_bulk',
+        'hotspot_activation',
+        'voucher_created',
+        'voucher_updated',
+        'voucher_deleted',
+        'voucher_redeemed',
+        'expiry_propagation',
+        'package_propagation',
+        'child_auto_renewal',
+        'voucher_generated_and_sent',
+        'voucher_sms_failed',
+        'radius_sync_single',
+        'olt_created',
+        'document_generated',
+        'olt_connection_test',
+        'onu_authorization'
+        
         
       ],
     },
@@ -85,7 +106,11 @@ const SystemLogSchema = new Schema(
         "user",
         "invoice",
         "site",
-        "system"
+        "system",
+        'voucher',
+        'olt',
+        'onu'
+
       ],
     },
 

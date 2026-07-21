@@ -1,0 +1,6 @@
+exec exec_activate {
+    wait = no
+    program = "/usr/local/bin/scripts/activate_customer.sh %{User-Name} %{NAS-IP-Address} %{Acct-Session-Id}"
+    input_pairs = request
+    shell_escape = yes
+}

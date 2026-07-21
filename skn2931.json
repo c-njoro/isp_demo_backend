@@ -1,0 +1,117 @@
+{
+    "_id": {
+      "$oid": "6a104c1795d32450fc7fced0"
+    },
+    "accountId": "SKN2931",
+    "regionCode": "SKN",
+    "city": "Rift Region",
+    "subLocation": "Sobea",
+    "localArea": "Sobea",
+    "location": {
+      "mainCity": "Rift Region",
+      "subLocation": "Sobea",
+      "area": "Sobea",
+      "houseNumber": "",
+      "apartment": "Sobea"
+    },
+    "siteId": {
+      "$oid": "6a0dc10237e5028eb51eac02"
+    },
+    "isChild": false,
+    "renewals": [],
+    "firstName": "Charles",
+    "lastName": "Moguku",
+    "email": "",
+    "phoneNumber": "254721274509",
+    "pppoe": {
+      "username": "SKN2931",
+      "password": "IRBtm7@N",
+      "siteIp": null,
+      "staticIp": null,
+      "macAddress": null,
+      "useOldUsername": false
+    },
+    "nasIp": null,
+    "cpe": {
+      "serialNumber": "123456789",
+      "macAddress": "00:00:00:00:00:00",
+      "model": "Xerox",
+      "wifiName": "SKN2931",
+      "wifiPassword": "52cBJ3U#"
+    },
+    "subscription": {
+      "packageId": {
+        "$oid": "6a0e0ae8ab7871ff9c4480a1"
+      },
+      "status": "active",
+      "activatedAt": {
+        "$date": "2026-04-29T17:57:46.065Z"
+      },
+      "expiresAt": {
+        "$date": "2026-05-29T17:57:46.065Z"
+      },
+      "autoRenew": true,
+      "pausedAt": null,
+      "pausedPeriod": 0
+    },
+    "suspensionSource": null,
+    "fupEnabled": false,
+    "burst": {
+      "enabled": false
+    },
+    "freeExtensionDays": 0,
+    "maxFreeExtensionDays": 3,
+    "billing": {
+      "balance": 0,
+      "discountEnabled": false,
+      "discountAmount": 0
+    },
+    "waitingForSession": false,
+    "connectionStatus": {
+      "status": "offline",
+      "lastOnline": {
+        "$date": "2025-06-21T12:16:27.046Z"
+      },
+      "lastOffline": {
+        "$date": "2026-05-22T12:58:15.092Z"
+      },
+      "lastChecked": {
+        "$date": "2026-05-23T10:18:35.811Z"
+      },
+      "currentIp": null,
+      "currentMac": "00:00:00:00:00:00"
+    },
+    "otp": {
+      "attempts": 0
+    },
+    "isActive": true,
+    "paymentCounter": 0,
+    "notes": [
+      {
+        "note": "Imported via bulk upload from JSON",
+        "addedBy": {
+          "$oid": "6a08cb2112d38dfcb7752310"
+        },
+        "_id": {
+          "$oid": "6a104c1795d32450fc7fced1"
+        },
+        "addedAt": {
+          "$date": "2026-05-22T12:29:11.690Z"
+        }
+      }
+    ],
+    "lastExpiryWarningSent": null,
+    "lastExpiryWarningExpiry": null,
+    "createdBy": {
+      "$oid": "69e61137b86babe155e23322"
+    },
+    "createdAt": {
+      "$date": "2025-06-21T12:16:27.046Z"
+    },
+    "updatedAt": {
+      "$date": "2026-05-23T10:18:35.817Z"
+    },
+    "retention": [],
+    "hashedPhone": "785d53b8c073265562487322fec89228266b439548b255dad8c41e434f4ec97d",
+    "__v": 0
+  }

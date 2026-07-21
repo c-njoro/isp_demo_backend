@@ -60,6 +60,8 @@ const PackageSchema = new Schema({
     }
   },
 
+  applicableToRouters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Router', default: [] }],
+
   fup: {
     enabled: { type: Boolean, default: false },
     dataThresholdGB: { type: Number, default: 0 },    // e.g., 100

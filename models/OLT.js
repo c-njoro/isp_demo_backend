@@ -33,6 +33,17 @@ const oltSchema = new mongoose.Schema({
     required: [true, 'Site ID is required'],
     index: true
   },
+
+  // The specific MikroTik this OLT's management port physically connects
+  // through (directly via LAN cable, or via a switch on the same segment).
+  // This OLT's `ip` is only reachable through this router's OpenVPN tunnel,
+  // so this field is required for routing/reachability, not just inventory.
+  routerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Router',
+    required: [true, 'Router ID is required — the OLT must be reachable through a known MikroTik tunnel'],
+    index: true
+  },
   
   regionCode: {
     type: String,
@@ -81,16 +92,90 @@ const oltSchema = new mongoose.Schema({
   apiType: {
     type: String,
     enum: {
-      values: ['rest', 'snmp', 'cli', 'smartolt', 'telnet', 'ssh'],
+      values: ['ssh', 'telnet', 'snmp', 'cli', 'rest', 'smartolt'],
       message: '{VALUE} is not a supported API type'
     },
-    default: 'smartolt'
+    default: 'ssh'
   },
   
   // SSL/TLS configuration
   useSSL: {
     type: Boolean,
     default: false
+  },
+
+  // ============================================
+  // SSH CONNECTION DETAIL
+  // ============================================
+  // Tuning knobs for the SSH/MML session itself. Defaults match what
+  // huawei.js / zte.js already use for connectionTimeout — exposing them
+  // here means per-OLT overrides are possible without touching code
+  // (useful for a slow/flaky tunnel link to a specific site).
+
+  ssh: {
+    connectTimeoutMs: {
+      type: Number,
+      default: 15000,
+      min: 1000
+    },
+    commandTimeoutMs: {
+      type: Number,
+      default: 15000,
+      min: 1000
+    },
+    retryAttempts: {
+      type: Number,
+      default: 2,
+      min: 0,
+      max: 5
+    },
+    retryDelayMs: {
+      type: Number,
+      default: 2000,
+      min: 0
+    },
+    hostKeyFingerprint: {
+      type: String,
+      trim: true
+      // Optional: pin the expected host key fingerprint to detect
+      // MITM/device-swap on this management IP. Left blank = not enforced.
+    }
+  },
+
+  // ============================================
+  // SNMP CONFIGURATION (secondary channel — optical/health polling)
+  // ============================================
+  // SSH/MML remains the channel for authorization and provisioning writes.
+  // SNMP is read-only here, used for periodic optical power and chassis
+  // health polling without opening a full SSH session every cycle.
+
+  snmp: {
+    enabled: {
+      type: Boolean,
+      default: false
+    },
+    version: {
+      type: String,
+      enum: ['1', '2c', '3'],
+      default: '2c'
+    },
+    community: {
+      type: String,
+      trim: true,
+      select: false // sensitive, same treatment as password
+    },
+    port: {
+      type: Number,
+      default: 161
+    },
+    // SNMPv3 fields, only relevant if version === '3'
+    v3: {
+      username: { type: String, trim: true },
+      authProtocol: { type: String, enum: ['MD5', 'SHA', null], default: null },
+      authKey: { type: String, trim: true, select: false },
+      privProtocol: { type: String, enum: ['DES', 'AES', null], default: null },
+      privKey: { type: String, trim: true, select: false }
+    }
   },
   
   // ============================================
@@ -100,10 +185,10 @@ const oltSchema = new mongoose.Schema({
   brand: {
     type: String,
     enum: {
-      values: ['smartolt', 'huawei', 'zte', 'fiberhome', 'other'],
+      values: ['huawei', 'zte', 'fiberhome', 'smartolt', 'other'],
       message: '{VALUE} is not a supported brand'
     },
-    default: 'smartolt',
+    default: 'huawei',
     required: [true, 'OLT brand is required'],
   },
   
@@ -129,6 +214,35 @@ const oltSchema = new mongoose.Schema({
     default: 16,
     min: [1, 'Must have at least 1 PON port'],
     max: [64, 'Cannot exceed 64 PON ports']
+  },
+
+  // Which physical slots actually host GPON boards on this chassis —
+  // confirmed by running `display board 0` once, by hand, after the OLT
+  // is reachable. NOT a guess: looping every slot from 0 to ponPorts
+  // against a real chassis means hitting slots with no board at all
+  // (control boards, uplink boards, empty slots), which is slow or hangs
+  // per slot and is exactly what caused the ONU-listing endpoint to time
+  // out against a real device. Leave empty until confirmed — discovery/
+  // listing functions should refuse to run a blind sweep rather than
+  // guess this wrong again.
+  gponSlots: {
+    type: [Number],
+    default: []
+  },
+
+  // Full chassis board table as discovered by testConnection — every
+  // slot, not just GPON ones. Lets the frontend show real chassis info
+  // (control board, uplink board, etc.) without a separate API call.
+  // Overwritten wholesale on each successful test, not diffed field by
+  // field, since it's a snapshot of "what's in the chassis right now."
+  discoveredBoards: {
+    type: [{
+      slot: Number,
+      boardName: String,
+      status: String,
+      isGponBoard: Boolean
+    }],
+    default: []
   },
   
   maxOnusPerPort: {
@@ -204,6 +318,21 @@ const oltSchema = new mongoose.Schema({
     memoryUsage: {
       type: Number // percentage
     },
+    // Chassis hardware health — populated by getSystemInfo()/board polling.
+    // Mirrors what `display board 0` / `show card` already return on
+    // Huawei/ZTE; parsing these out gives a real health dashboard instead
+    // of just raw text dumps.
+    powerSupplies: [{
+      slot: String,
+      status: { type: String, enum: ['normal', 'fault', 'absent', 'unknown'], default: 'unknown' }
+    }],
+    fans: [{
+      slot: String,
+      status: { type: String, enum: ['normal', 'fault', 'absent', 'unknown'], default: 'unknown' },
+      speedPercent: Number
+    }],
+    slotsTotal: { type: Number },
+    slotsOccupied: { type: Number },
     lastUpdated: {
       type: Date
     }
@@ -367,6 +496,7 @@ const oltSchema = new mongoose.Schema({
 // ============================================
 
 oltSchema.index({ siteId: 1, isActive: 1 });
+oltSchema.index({ routerId: 1, isActive: 1 });
 oltSchema.index({ regionCode: 1, isActive: 1 });
 oltSchema.index({ status: 1 });
 oltSchema.index({ ip: 1 });
@@ -436,6 +566,14 @@ oltSchema.methods.getAvailableCapacity = function() {
   const total = this.totalCapacity;
   const used = this.stats?.totalOnus || 0;
   return total - used;
+};
+
+/**
+ * Get the Router (MikroTik) this OLT's management port connects through
+ */
+oltSchema.methods.getRouter = async function() {
+  const Router = mongoose.model('Router');
+  return await Router.findById(this.routerId);
 };
 
 /**

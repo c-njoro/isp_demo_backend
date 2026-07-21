@@ -13,7 +13,8 @@ const {
   getAnUnprocessedPayment,
   movePayment,
   movePaymentToParent,
-  depositCash
+  depositCash,
+  mpesaWebhook
 } = require('../controllers/paymentControllerKopoKopo');
 
 const { protect, applyRegionFilter } = require('../middleware/auth');
@@ -31,6 +32,7 @@ router.post('/initiate', initiatePayment);
 
 // KopoKopo webhook (replaces BOTH mpesaCallback + c2bCallback)
 router.post('/kopokopo/webhook', express.json(), kopokopoWebhook);
+router.post('/mpesa/webhook', express.json(), mpesaWebhook);
 
 // Payment status
 router.get('/:paymentId/status', checkPaymentStatus);

@@ -18,8 +18,8 @@ router.route('/')
   .post(adminOnly, createSite);
 
 router.route('/:id')
-  .get(adminOnly, getSite)
-  .put(adminOnly, updateSite)
-  .delete(adminOnly, deleteSite);
+  .get( getSite)
+  .put( updateSite)
+  .delete( deleteSite);
 
 module.exports = router;

@@ -11,7 +11,7 @@ const PaymentSchema = new Schema({
 
   source: {
     type: String,
-    enum: ['stk', 'till', 'manual', 'manual_deposit'],
+    enum: ['stk', 'till', 'manual', 'manual_deposit', 'payment_transfer'],
     default: 'stk'
   },
 
@@ -27,7 +27,7 @@ const PaymentSchema = new Schema({
   customerId: {
     type: Schema.Types.ObjectId,
     required: function () {
-      return this.customerType === 'pppoe' || this.customerType === 'hotspot';
+      return this.customerType === 'pppoe';
     }
   },
 
@@ -95,7 +95,7 @@ const PaymentSchema = new Schema({
   // Payment Status
   status: {
     type: String,
-    enum: ['initiated', 'pending', 'completed', 'failed', 'cancelled', 'timeout'],
+    enum: ['initiated', 'pending', 'completed', 'failed', 'cancelled', 'timeout', 'moved'],
     default: 'initiated'
   },
   
@@ -154,7 +154,7 @@ paymentChannel: {
 // Update paymentMethod to support multiple channels
 paymentMethod: {
   type: String,
-  enum: ['mpesa', 'airtel', 'card', 'bank', 'cash'],
+  enum: ['mpesa', 'airtel', 'card', 'bank', 'cash', 'wallet'],
   default: 'mpesa'
 },
 

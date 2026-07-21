@@ -1,7 +1,10 @@
 const cron = require('node-cron');
 const Customer = require('../models/Customer');
+const Package = require('../models/Package');
+const Site = require('../models/Site');
 const smsTemplateService = require('../services/smsTemplateService');
 const mongoose = require('mongoose');
+
 
 // ---------- Lock model for single execution across multiple instances ----------
 const LockSchema = new mongoose.Schema({
@@ -51,24 +54,46 @@ async function sendExpiryWarnings() {
     };
 
     const customers = await Customer.find(query).populate('subscription.packageId');
+    
     const results = { sent: 0, failed: 0, errors: [] };
 
     for (const customer of customers) {
+      const packageDoc = customer.subscription.packageId;
+      if(customer.billing.balance >= packageDoc.price){
+        console.log("Has enough balance.");
+        continue;
+      }
       const currentExpiry = customer.subscription.expiresAt;
       // Already warned for this exact expiry date?
       if (customer.lastExpiryWarningExpiry &&
           customer.lastExpiryWarningExpiry.getTime() === currentExpiry.getTime()) {
         continue;
       }
+      const region = await Site.findById(customer.siteId);
+      let till = "";
+      if(region){
+        till = region.payment?.tillNumber;
+      }else{
+        till = "";
+      }
 
       try {
-        const formattedExpiry = currentExpiry.toLocaleDateString('en-GB');
+        const formattedExpiry = currentExpiry.toLocaleString('en-GB', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'Africa/Nairobi'  // EAT = UTC+3
+      }).replace(',', '');
         await smsTemplateService.sendUsingTemplate(
           'expiry_warning',
           customer.phoneNumber,
           {
             customerName: `${customer.firstName} ${customer.lastName}`,
             expiryDate: formattedExpiry,
+            tillNumber: till,
           },
           {
             customerId: customer._id,

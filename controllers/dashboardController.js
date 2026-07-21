@@ -1,10 +1,12 @@
 const asyncHandler = require('../middleware/asyncHandler');
 const Customer = require('../models/Customer');
+const HotspotUser = require('../models/HotspotUser');
 const Lead = require('../models/Lead');
 const Ticket = require('../models/Ticket');
 const Transaction = require('../models/Transaction');
 const Payment = require('../models/Payment');
 const UnprocessedPayment = require('../models/UnprocessedPayment');
+const { ErrorResponse } = require('../middleware/errorHandler');
 
 
 
@@ -27,41 +29,58 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
 
   // Customer stats
   const totalCustomers = await Customer.countDocuments(regionFilter);
-  const activeCustomers = await Customer.countDocuments({ ...regionFilter, 'subscription.status': 'active' });
-  const expiredCustomers = await Customer.countDocuments({ ...regionFilter, 'subscription.status': 'expired' });
-  const suspendedCustomers = await Customer.countDocuments({ ...regionFilter, 'subscription.status': 'suspended' });
+  const activeCustomers = await Customer.countDocuments({
+    ...regionFilter,
+    isActive: true,
+    'subscription.status': { $in: ['active', 'suspended'] }
+  });
+  const expiredCustomers = await Customer.countDocuments({
+    ...regionFilter,
+    isActive: true,
+    'subscription.status': 'expired'
+  });
+  const disabledCustomers = await Customer.countDocuments({
+    ...regionFilter,
+    isActive: false
+  });
 
-  // Revenue by site (transactions)
-  const revenueBySite = await Transaction.aggregate([
+  // Revenue by site (from completed payments)
+  const revenueBySite = await Payment.aggregate([
     {
       $match: {
         ...regionFilter,
-        type: 'MPESA',
         status: 'completed',
-        ...dateFilter
+        ...dateFilter,
+        siteId: { $exists: true, $ne: null }
+      }
+    },
+    {
+      $group: {
+        _id: '$siteId',
+        revenue: { $sum: '$amount' },
+        count: { $sum: 1 }
       }
     },
     {
       $lookup: {
         from: 'sites',
-        localField: 'siteId',
+        localField: '_id',
         foreignField: '_id',
         as: 'site'
       }
     },
     { $unwind: { path: '$site', preserveNullAndEmptyArrays: true } },
     {
-      $group: {
-        _id: { siteId: '$siteId', siteName: '$site.siteName' },
-        revenue: { $sum: '$amount' },
-        count: { $sum: 1 }
+      $project: {
+        _id: 0,
+        siteId: '$_id',
+        siteName: { $ifNull: ['$site.name', 'Unknown'] },
+        revenue: 1,
+        count: 1
       }
     },
     { $sort: { revenue: -1 } }
   ]);
-
-  const overallRevenue = revenueBySite.reduce((sum, item) => sum + item.revenue, 0);
-  const totalTransactions = revenueBySite.reduce((sum, item) => sum + item.count, 0);
 
   // Payment stats by site
   const paymentStatsBySite = await Payment.aggregate([
@@ -82,7 +101,10 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
     { $unwind: { path: '$site', preserveNullAndEmptyArrays: true } },
     {
       $group: {
-        _id: { siteId: '$siteId', siteName: '$site.siteName' },
+        _id: {
+          siteId: '$siteId',
+          siteName: { $ifNull: ['$site.name', 'Unknown'] }
+        },
         total: { $sum: 1 },
         completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
         failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
@@ -91,6 +113,9 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
     },
     { $sort: { total: -1 } }
   ]);
+
+  const overallRevenue = revenueBySite.reduce((sum, item) => sum + item.revenue, 0);
+  const totalTransactions = revenueBySite.reduce((sum, item) => sum + item.count, 0);
 
   const overallPaymentStats = paymentStatsBySite.reduce(
     (acc, site) => {
@@ -103,7 +128,7 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
     { total: 0, completed: 0, failed: 0, pending: 0 }
   );
 
-  // Tickets and leads (existing)
+  // Tickets and leads
   const leadStats = await getLeadStats(regionFilter.regionCode, dateFrom, dateTo);
   const ticketStats = await getTicketStats(regionFilter.regionCode, dateFrom, dateTo);
 
@@ -123,15 +148,15 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
         total: totalCustomers,
         active: activeCustomers,
         expired: expiredCustomers,
-        suspended: suspendedCustomers,
+        disabled: disabledCustomers,
         expiringSoon
       },
       revenue: {
         total: overallRevenue,
         transactions: totalTransactions,
         bySite: revenueBySite.map(item => ({
-          siteId: item._id.siteId,
-          siteName: item._id.siteName || 'Unknown',
+          siteId: item.siteId,
+          siteName: item.siteName,
           amount: item.revenue,
           count: item.count
         }))
@@ -156,7 +181,6 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
   });
 });
 
-
 exports.getCustomersSubscriptionsByDate = asyncHandler(async (req, res, next) => {
   let { days } = req.body;
   const regionFilter = req.regionFilter;
@@ -176,10 +200,12 @@ exports.getCustomersSubscriptionsByDate = asyncHandler(async (req, res, next) =>
     const expiringSoon = await Customer.countDocuments({
       ...regionFilter,
       'subscription.status': 'active',
+      isActive: true,
       'subscription.expiresAt': {
         $gte: now,
         $lte: futureDate,
       },
+      'isActive': 'true'
     });
     return res.status(200).json({
       success: true,
@@ -196,10 +222,12 @@ exports.getCustomersSubscriptionsByDate = asyncHandler(async (req, res, next) =>
     const expiredRecently = await Customer.countDocuments({
       ...regionFilter,
       'subscription.status': 'expired',
+      isActive: true,
       'subscription.expiresAt': {
         $gte: pastDate,
         $lte: now,
       },
+      'isActive': 'true'
     });
     return res.status(200).json({
       success: true,
@@ -210,6 +238,95 @@ exports.getCustomersSubscriptionsByDate = asyncHandler(async (req, res, next) =>
       },
     });
   }
+});
+
+/**
+ * @desc    Get customers list filtered by subscription timeline (expiring soon or expired recently)
+ * @route   POST /api/dashboard/customers-by-timeline
+ * @access  Private
+ * @body    { days: number, direction: 'future'|'past', page?: number, limit?: number }
+ * @returns List of customers with accountId, name, expiryDate, balance, nasIp
+ */
+// At top of dashboardController.js
+
+
+// Then the function
+exports.getCustomersBySubscriptionTimeline = asyncHandler(async (req, res, next) => {
+  let { days, direction, page = 1, limit = 20 } = req.body;
+  const regionFilter = req.regionFilter;
+
+  days = Number(days);
+  if (!Number.isInteger(days) || days < 0) {
+    days = Math.abs(days)
+    
+  }
+  if (!['future', 'past'].includes(direction)) {
+    return next(new ErrorResponse('Direction must be "future" or "past"', 400));
+  }
+
+  const now = new Date();
+  let dateFilter = {};
+
+  if (direction === 'future') {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    dateFilter = {
+      isActive: true,
+      'subscription.status': 'active',
+      'subscription.expiresAt': {
+        $gte: now,
+        $lte: futureDate,
+      },
+      'isActive': 'true'
+    };
+  } else { // past
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - days);
+    dateFilter = {
+      isActive: true,                        // must be active record
+      'subscription.status': 'expired',      // must CURRENTLY be expired (not renewed)
+      'subscription.expiresAt': {
+        $gte: pastDate,
+        $lte: now,
+      },
+      'isActive': 'true'
+    };
+  }
+
+  const query = { ...regionFilter, ...dateFilter };
+  const total = await Customer.countDocuments(query);
+
+  const customers = await Customer.find(query)
+    .select('_id accountId firstName lastName subscription.expiresAt billing.balance pppoe.siteIp nasIp phoneNumber')
+    .lean()
+    .sort({ 'subscription.expiresAt': direction === 'future' ? 1 : -1 })
+    .skip((page - 1) * limit)
+    .limit(limit);
+
+  const customerList = customers.map(c => ({
+    _id: c._id,
+    accountId: c.accountId,
+    name: `${c.firstName} ${c.lastName}`,
+    expiryDate: c.subscription.expiresAt,
+    balance: c.billing?.balance || 0,
+    nasIp: c.pppoe?.siteIp || c.nasIp || null,
+    phone: c.phoneNumber || 'N/A',
+  }));
+
+  res.status(200).json({
+    success: true,
+    data: {
+      customers: customerList,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      direction,
+      days,
+    },
+  });
 });
 
 // @desc    Get revenue chart data
@@ -504,14 +621,14 @@ exports.getTopCustomers = asyncHandler(async (req, res, next) => {
 // @route   GET /api/dashboard/system-health
 // @access  Private
 exports.getSystemHealth = asyncHandler(async (req, res, next) => {
-  const { days = 1 } = req.query; // days as query param, default 1
+  const { days = 1 } = req.query;
   const daysNum = parseInt(days, 10);
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - daysNum);
 
-  // 1. Payment success rate (last `days` days)
+  // 1. Payment success rate
   const totalPayments = await Payment.countDocuments({
-    createdAt: { $gte: startDate }
+    createdAt: { $gte: startDate },
   });
   const successfulPayments = await Payment.countDocuments({
     createdAt: { $gte: startDate },
@@ -521,12 +638,29 @@ exports.getSystemHealth = asyncHandler(async (req, res, next) => {
     ? Math.round((successfulPayments / totalPayments) * 100)
     : 0;
 
-  // 2. Active sessions (from RADIUS radacct)
-  const radiusService = require('../services/radiusService');
-  const activeSessionsResult = await radiusService.getActiveSessions();
-  const activeSessions = activeSessionsResult.success ? activeSessionsResult.count : 0;
+  // 2. Active sessions (all regions)
+  const allCustomers = await Customer.find({ isActive: true })
+    .select('pppoe.username pppoe.siteIp')
+    .lean();
 
-  // 3. SLA compliance (tickets resolved within deadline, last `days` days)
+  let activeSessionCount = 0;
+  if (allCustomers.length > 0) {
+    const usernames = allCustomers.map(c => c.pppoe.username).filter(Boolean);
+    const expectedNasIpMap = {};
+    for (const c of allCustomers) {
+      if (c.pppoe.siteIp) expectedNasIpMap[c.pppoe.username] = c.pppoe.siteIp;
+    }
+    const radiusService = require('../services/radiusService');
+    const statuses = await radiusService.getBulkUserConnectionStatus(usernames, expectedNasIpMap);
+    for (const username of usernames) {
+      const s = statuses[username];
+      if (s && (s.isOnline || s.isOnlineNoInternet)) {
+        activeSessionCount++;
+      }
+    }
+  }
+
+  // 3. SLA compliance
   const totalResolvedTickets = await Ticket.countDocuments({
     status: 'resolved',
     resolvedAt: { $gte: startDate }
@@ -540,9 +674,9 @@ exports.getSystemHealth = asyncHandler(async (req, res, next) => {
     ? Math.round((slaCompliantTickets / totalResolvedTickets) * 100)
     : 0;
 
-  // 4. Pending issues (all-time, not time‑bound)
-  const pendingPayments = await Payment.countDocuments({
-    status: { $in: ['initiated', 'pending'] }
+  // 4. Pending issues
+  const pendingPayments = await UnprocessedPayment.countDocuments({
+    status: { $in: ['new'] }
   });
   const openTickets = await Ticket.countDocuments({
     status: { $in: ['open', 'in_progress'] }
@@ -557,7 +691,7 @@ exports.getSystemHealth = asyncHandler(async (req, res, next) => {
     data: {
       days: daysNum,
       paymentSuccessRate,
-      activeSessions,
+      activeSessions: activeSessionCount,
       slaComplianceRate,
       pendingIssues: {
         pendingPayments,
@@ -571,8 +705,6 @@ exports.getSystemHealth = asyncHandler(async (req, res, next) => {
 // @desc    Get today's earnings from completed transactions
 // @route   GET /api/dashboard/today-earnings
 // @access  Private
-
-
 exports.getTodayEarnings = asyncHandler(async (req, res, next) => {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -634,61 +766,83 @@ exports.getTodayEarnings = asyncHandler(async (req, res, next) => {
 
 // @desc    Get online customers count (TRUE online with internet, not just RADIUS sessions)
 // @route   GET /api/dashboard/online-customers
-// @access  Private
-exports.getOnlineCustomersCount = asyncHandler(async (req, res, next) => {
-  const regionFilter = req.regionFilter;
-  
-  // OPTION 1: Fast but potentially inaccurate - uses cached connectionStatus
-  // This reads from the database cache that gets updated when customers are viewed
-  const onlineFromCache = await Customer.countDocuments({
-    ...regionFilter,
-    'connectionStatus.status': 'online' // Only truly online customers
-  });
+// In your controller file (e.g., customerController.js or dashboardController.js)
 
-  // OPTION 2: Accurate but slower - checks RADIUS in real-time
-  // Use this for accurate count by checking all customers against RADIUS
-  
-  // Fetch ALL customers in the region
+
+
+/**
+ * Get online counts for PPPoE customers and Hotspot users within the region.
+ * Returns:
+ *   {
+ *     success: true,
+ *     data: {
+ *       pppoeOnline: number,
+ *       hotspotOnline: number,
+ *       totalOnline: number
+ *     }
+ *   }
+ */
+exports.getOnlineCustomersCount = asyncHandler(async (req, res, next) => {
+  const regionFilter = req.regionFilter; // e.g., { regionCode: 'SKY' }
+
+  const radiusService = require("../services/radiusService");
+
+  // ============================================
+  // 1. PPPoE online count (existing logic)
+  // ============================================
   const allCustomers = await Customer.find(regionFilter)
-    .select('pppoe.username pppoe.siteIp')
+    .select('pppoe.username')
     .lean();
 
-  if (allCustomers.length === 0) {
-    return res.status(200).json({
-      success: true,
-      data: 0
-    });
-  }
+  let pppoeOnline = 0;
+  if (allCustomers.length > 0) {
+    const usernames = allCustomers.map(c => c.pppoe.username);
+    const statuses = await radiusService.getBulkUserConnectionStatus(usernames);
 
-  // Prepare for bulk RADIUS check
-  const usernames = allCustomers.map(c => c.pppoe.username);
-  const expectedNasIpMap = {};
-  for (const c of allCustomers) {
-    if (c.pppoe.siteIp) {
-      expectedNasIpMap[c.pppoe.username] = c.pppoe.siteIp;
+    for (const username of usernames) {
+      const s = statuses[username];
+      // count online OR online-no-internet (both indicate an active session)
+      if (s && (s.isOnline || s.isOnlineNoInternet)) {
+        pppoeOnline++;
+      }
     }
   }
 
-  console.log(`[ONLINE COUNT] Checking ${usernames.length} customers against RADIUS...`);
+  // ============================================
+  // 2. Hotspot online count
+  // ============================================
+  const allHotspotUsers = await HotspotUser.find(regionFilter)
+    .select('macAddress')
+    .lean();
 
-  // Check real-time connectivity for all customers
-  const radiusService = require('../services/radiusService');
-  const statuses = await radiusService.getBulkUserConnectionStatus(usernames, expectedNasIpMap);
+  let hotspotOnline = 0;
+  if (allHotspotUsers.length > 0) {
+    const macAddresses = allHotspotUsers
+      .map(h => h.macAddress)
+      .filter(mac => mac && mac.trim().length > 0); // filter out invalid MACs
 
-  // Count only customers who are TRULY online (not online-no-internet)
-  let trueOnlineCount = 0;
-  for (const username of usernames) {
-    const s = statuses[username];
-    if (s && s.isOnline) {
-      trueOnlineCount++;
+    if (macAddresses.length > 0) {
+      // getBulkHotspotSessions returns a map: mac -> { isOnline, ... }
+      const sessionsMap = await radiusService.getBulkHotspotSessions(macAddresses);
+      for (const mac of macAddresses) {
+        const session = sessionsMap[mac];
+        if (session && session.isOnline) {
+          hotspotOnline++;
+        }
+      }
     }
   }
 
-  console.log(`[ONLINE COUNT] Result: ${trueOnlineCount} customers truly online (with internet)`);
-
+  // ============================================
+  // 3. Response
+  // ============================================
   res.status(200).json({
     success: true,
-    data: trueOnlineCount
+    data: {
+      pppoeOnline,
+      hotspotOnline,
+      totalOnline: pppoeOnline + hotspotOnline
+    }
   });
 });
 
@@ -783,6 +937,282 @@ exports.getOnlineCustomersCountFast = asyncHandler(async (req, res, next) => {
     data: estimatedOnline
   });
 });
+
+
+// Add these new methods to your dashboardController.js
+
+/**
+ * @desc    Get count of customers by subscription date range
+ * @route   POST /api/dashboard/subscriptions-by-date-range
+ * @access  Private
+ * @body    { startDate: string, endDate: string }
+ * @returns Count of customers and range type (past/future)
+ */
+exports.getCustomersSubscriptionsByDateRange = asyncHandler(async (req, res, next) => {
+  const { startDate, endDate } = req.body;
+  const regionFilter = req.regionFilter;
+
+  // Validate dates
+  if (!startDate || !endDate) {
+    return next(new ErrorResponse('Both startDate and endDate are required', 400));
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const now = new Date();
+
+  // Reset time to midnight for accurate comparison
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+
+  // Validate date range
+  if (start > end) {
+    return next(new ErrorResponse('Start date cannot be after end date', 400));
+  }
+
+  // Determine if range is in past or future
+  let rangeType;
+  let count;
+
+  if (end <= now) {
+    // Both dates are in the past (or today) - search for expired customers
+    rangeType = 'past';
+    
+    count = await Customer.countDocuments({
+      ...regionFilter,
+      'subscription.status': 'expired',
+      'subscription.expiresAt': {
+        $gte: start,
+        $lte: end,
+      },
+      'isActive': 'true'
+    });
+  } else if (start > now) {
+    // Both dates are in the future - search for active customers expiring in this range
+    rangeType = 'future';
+    
+    count = await Customer.countDocuments({
+      ...regionFilter,
+      'subscription.status': 'active',
+      'subscription.expiresAt': {
+        $gte: start,
+        $lte: end,
+      },
+      'isActive': 'true'
+    });
+  } else {
+    // Invalid: one date in past, one in future
+    return next(new ErrorResponse('Both dates must be either in the past or future. Cannot mix time periods.', 400));
+  }
+
+  res.status(200).json({
+    success: true,
+    data: {
+      startDate,
+      endDate,
+      count,
+      type: rangeType,
+    },
+  });
+});
+
+/**
+ * @desc    Get customers list filtered by subscription date range
+ * @route   POST /api/dashboard/customers-by-date-range
+ * @access  Private
+ * @body    { startDate: string, endDate: string, page?: number, limit?: number }
+ * @returns List of customers with accountId, name, phone, expiryDate, balance, nasIp
+ */
+exports.getCustomersBySubscriptionDateRange = asyncHandler(async (req, res, next) => {
+  const { startDate, endDate, page = 1, limit = 20 } = req.body;
+  const regionFilter = req.regionFilter;
+
+  // Validate dates
+  if (!startDate || !endDate) {
+    return next(new ErrorResponse('Both startDate and endDate are required', 400));
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const now = new Date();
+
+  // Reset time
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+
+  if (start > end) {
+    return next(new ErrorResponse('Start date cannot be after end date', 400));
+  }
+
+  // Determine search criteria based on date range type
+  let searchCriteria;
+  let rangeType;
+
+  if (end <= now) {
+    // Past: search expired customers
+    rangeType = 'past';
+    searchCriteria = {
+      ...regionFilter,
+      'subscription.status': 'expired',
+      'subscription.expiresAt': {
+        $gte: start,
+        $lte: end,
+      },
+      'isActive': 'true'
+    };
+  } else if (start > now) {
+    // Future: search active customers
+    rangeType = 'future';
+    searchCriteria = {
+      ...regionFilter,
+      'subscription.status': 'active',
+      'subscription.expiresAt': {
+        $gte: start,
+        $lte: end,
+      },
+      'isActive': 'true'
+    };
+  } else {
+    return next(new ErrorResponse('Both dates must be either in the past or future', 400));
+  }
+
+  // Pagination
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const skip = (pageNum - 1) * limitNum;
+
+  // Fetch customers
+  const customers = await Customer.find(searchCriteria)
+    .select('accountId firstName lastName phoneNumber subscription.expiresAt billing.balance pppoe.siteIp')
+    .skip(skip)
+    .limit(limitNum)
+    .sort({ 'subscription.expiresAt': 1 }) // Sort by expiry date ascending
+    .lean();
+
+  // Get total count for pagination
+  const total = await Customer.countDocuments(searchCriteria);
+  const pages = Math.ceil(total / limitNum);
+
+  // Format response
+  const formattedCustomers = customers.map((c) => ({
+    _id: c._id.toString(),
+    accountId: c.accountId,
+    name: `${c.firstName} ${c.lastName}`,
+    phone: c.phoneNumber || 'N/A',
+    expiryDate: c.subscription.expiresAt,
+    balance: c.billing.balance || 0,
+    nasIp: c.pppoe?.siteIp || null,
+  }));
+
+  res.status(200).json({
+    success: true,
+    data: {
+      customers: formattedCustomers,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages,
+      },
+      dateRange: {
+        startDate,
+        endDate,
+        type: rangeType,
+      },
+    },
+  });
+});  
+
+/**
+ * @desc    Get network-wide data usage analytics
+ * @route   GET /api/dashboard/usage-analytics
+ * @access  Private (Admin)
+ * @query   dateFrom, dateTo, targetDate, limit
+ */
+exports.getUsageAnalytics = asyncHandler(async (req, res, next) => {
+  const { dateFrom, dateTo, targetDate, limit = 10 } = req.query;
+
+  const radiusService = require('../services/radiusService');
+  const result = await radiusService.getUsageAnalytics({
+    dateFrom:   dateFrom   || null,
+    dateTo:     dateTo     || null,
+    targetDate: targetDate || null,
+    limit:      parseInt(limit)
+  });
+
+  if (!result.success) return next(new ErrorResponse(result.error, 500));
+
+  // Enrich top users with customer names from MongoDB
+  const allUsernames = [
+    ...result.topUsersPeriod,
+    ...result.topUsersToday,
+    ...result.topUsersMonth,
+    ...result.peakDays
+  ].map(u => u.username);
+
+  const uniqueUsernames = [...new Set(allUsernames)];
+
+  const customers = await Customer.find({
+    'pppoe.username': { $in: uniqueUsernames },
+    ...req.regionFilter
+  })
+  .select('firstName lastName accountId pppoe.username')
+  .lean();
+
+  const nameMap = {};
+  customers.forEach(c => {
+    nameMap[c.pppoe.username] = {
+      name:      `${c.firstName} ${c.lastName}`,
+      accountId: c.accountId
+    };
+  });
+
+  // Attach customer info to each list
+  const enrich = (list) => list.map(u => ({
+    ...u,
+    customerName: nameMap[u.username]?.name      || u.username,
+    accountId:    nameMap[u.username]?.accountId || null
+  }));
+
+  res.status(200).json({
+    success: true,
+    period:          result.period,
+    summary:         result.summary,
+    topUsersPeriod:  enrich(result.topUsersPeriod),
+    topUsersToday:   enrich(result.topUsersToday),
+    topUsersMonth:   enrich(result.topUsersMonth),
+    peakDays:        enrich(result.peakDays),
+    networkDaily:    result.networkDaily
+  });
+});
+
+/**
+ * @desc    Get single customer usage summary for dashboard widget
+ * @route   GET /api/dashboard/customer-usage/:username
+ * @access  Private (Admin)
+ * @query   days
+ */
+exports.getCustomerUsageSummary = asyncHandler(async (req, res, next) => {
+  const { username } = req.params;
+  const { days = 30 } = req.query;
+
+  const radiusService = require('../services/radiusService');
+  const result = await radiusService.getCustomerDailyUsage(username, {
+    days: parseInt(days)
+  });
+
+  if (!result.success) return next(new ErrorResponse(result.error, 500));
+
+  res.status(200).json({
+    success: true,
+    summary: result.summary,
+    data:    result.data
+  });
+});
+
+// Export these functions in your module.exports at the bottom of the file
 
 // module.exports = {
 //   getDashboardOverview,

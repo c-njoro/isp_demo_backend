@@ -1,5 +1,5 @@
 const BaseOLTService = require('./base');
-const { Client } = require('ssh2');
+const { Telnet } = require('telnet-client');
 
 /**
  * ZTE OLT Service
@@ -14,87 +14,76 @@ class ZTEOLTService extends BaseOLTService {
   }
 
   /**
-   * Get SSH connection to ZTE OLT
+   * Get telnet connection to ZTE OLT.
+   *
+   * CHANGED FROM ORIGINAL: this fleet's OLTs only have telnet confirmed
+   * working — SSH was never verified, so this switched from ssh2 to
+   * telnet-client. Login/shell prompt regexes below are UNVERIFIED
+   * against a real ZTE device (we've only confirmed these against the
+   * Huawei MA5683T so far) — adjust once tested against real ZTE output.
    * @private
    */
   async _getConnection(olt) {
-    return new Promise((resolve, reject) => {
-      this._validateOltConfig(olt);
+    this._validateOltConfig(olt);
 
-      const conn = new Client();
-      let authenticated = false;
+    const connection = new Telnet();
 
-      const timeout = setTimeout(() => {
-        conn.end();
-        reject(new Error('Connection timeout'));
-      }, this.connectionTimeout);
+    const params = {
+      host: olt.ip,
+      port: olt.port || 23, // ZTE often uses Telnet (23)
+      timeout: this.connectionTimeout,
+      // UNVERIFIED prompt patterns for ZTE — these are a reasonable guess
+      // based on common ZTE C300/C320 CLI conventions, NOT confirmed
+      // against a real device the way the Huawei prompts were.
+      shellPrompt: /[#>]\s*$/,
+      loginPrompt: /[Uu]sername\s*:?\s*$/,
+      passwordPrompt: /[Pp]assword\s*:?\s*$/,
+      username: olt.username,
+      password: olt.password,
+      negotiationMandatory: false,
+      execTimeout: this.connectionTimeout,
+      sendTimeout: this.connectionTimeout
+    };
 
-      conn.on('ready', () => {
-        clearTimeout(timeout);
-        authenticated = true;
-        this._log('info', `Connected to ZTE OLT: ${olt.name} (${olt.ip})`);
-        resolve(conn);
-      });
-
-      conn.on('error', (err) => {
-        clearTimeout(timeout);
-        this._log('error', `Connection error: ${err.message}`, { olt: olt.name });
-        reject(new Error(`SSH connection error: ${err.message}`));
-      });
-
-      conn.connect({
-        host: olt.ip,
-        port: olt.port || 23, // ZTE often uses Telnet (23)
-        username: olt.username,
-        password: olt.password,
-        readyTimeout: this.connectionTimeout
-      });
-    });
+    try {
+      await connection.connect(params);
+      this._log('info', `Connected to ZTE OLT via telnet: ${olt.name} (${olt.ip})`);
+      return connection;
+    } catch (err) {
+      throw new Error(`Telnet connection error: ${err.message}`);
+    }
   }
 
   /**
-   * Execute command on ZTE OLT
+   * Run a single command against an open telnet session.
    * @private
    */
   async _executeCommand(conn, command) {
-    return new Promise((resolve, reject) => {
-      let output = '';
-      let errorOutput = '';
+    try {
+      return await conn.exec(command);
+    } catch (err) {
+      throw new Error(`Command "${command}" failed: ${err.message}`);
+    }
+  }
 
-      conn.shell((err, stream) => {
-        if (err) return reject(err);
-
-        const timeout = setTimeout(() => {
-          stream.end();
-          reject(new Error('Command execution timeout'));
-        }, this.connectionTimeout);
-
-        stream.on('close', () => {
-          clearTimeout(timeout);
-          if (errorOutput) {
-            reject(new Error(errorOutput));
-          } else {
-            resolve(output);
-          }
-        });
-
-        stream.on('data', (data) => {
-          output += data.toString();
-        });
-
-        stream.stderr.on('data', (data) => {
-          errorOutput += data.toString();
-        });
-
-        // Send command
-        stream.write(command + '\n');
-        
-        // Wait for output then close
-        setTimeout(() => {
-          stream.end();
-        }, 2000);
-      });
-    });
+  /**
+   * Run a sequence of commands against ONE open session, in order.
+   *
+   * NOTE ON A BUG THIS FIXES: the original code looped
+   * `for (const cmd of commands) { await this._executeCommand(conn, cmd) }`
+   * directly — that part was fine. This helper exists so every call site
+   * is consistent and explicit about needing one continuous session,
+   * matching the pattern used in huawei.js. No behavior change for ZTE's
+   * multi-command methods, just a shared, named helper instead of an
+   * inline loop repeated at each call site.
+   * @private
+   */
+  async _executeSequence(conn, commands) {
+    const outputs = [];
+    for (const cmd of commands) {
+      outputs.push(await this._executeCommand(conn, cmd));
+    }
+    return outputs;
   }
 
   /**
@@ -110,7 +99,7 @@ class ZTEOLTService extends BaseOLTService {
       // Execute a simple command to verify
       const output = await this._executeCommand(conn, 'show version');
       
-      conn.end();
+      await conn.end();
 
       // Extract version from output
       const versionMatch = output.match(/Software\s+Version\s*:\s*(.+)/i) || 
@@ -124,7 +113,7 @@ class ZTEOLTService extends BaseOLTService {
         message: `Successfully connected to ${olt.name}`
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Connection test failed: ${error.message}`, { olt: olt.name });
       
@@ -147,7 +136,7 @@ class ZTEOLTService extends BaseOLTService {
       const versionOutput = await this._executeCommand(conn, 'show version');
       const cardOutput = await this._executeCommand(conn, 'show card');
       
-      conn.end();
+      await conn.end();
 
       return {
         success: true,
@@ -157,7 +146,7 @@ class ZTEOLTService extends BaseOLTService {
         }
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to get system info: ${error.message}`);
       return {
@@ -177,7 +166,7 @@ class ZTEOLTService extends BaseOLTService {
       
       const output = await this._executeCommand(conn, 'show gpon olt');
       
-      conn.end();
+      await conn.end();
 
       // Parse PON ports from output
       const ports = [];
@@ -201,7 +190,7 @@ class ZTEOLTService extends BaseOLTService {
         ports
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to get PON ports: ${error.message}`);
       return {
@@ -231,7 +220,7 @@ class ZTEOLTService extends BaseOLTService {
         `show gpon onu state gpon-olt_${rack}/${shelf}/${slot}/${port}`
       );
       
-      conn.end();
+      await conn.end();
 
       // Parse ONUs from output
       const onus = this._parseZTEOnuList(output, ponPort);
@@ -241,7 +230,7 @@ class ZTEOLTService extends BaseOLTService {
         onus
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to get ONUs on port ${ponPort}: ${error.message}`);
       return {
@@ -282,14 +271,14 @@ class ZTEOLTService extends BaseOLTService {
         }
       }
       
-      conn.end();
+      await conn.end();
 
       return {
         success: true,
         onus: allOnus
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to get all ONUs: ${error.message}`);
       return {
@@ -318,7 +307,7 @@ class ZTEOLTService extends BaseOLTService {
         `show gpon onu detail-info gpon-onu_${rack}/${shelf}/${slot}/${port}:${onuId}`
       );
       
-      conn.end();
+      await conn.end();
 
       // Parse ONU details
       const details = this._parseZTEOnuDetails(output);
@@ -328,7 +317,7 @@ class ZTEOLTService extends BaseOLTService {
         data: details
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to get ONU details: ${error.message}`);
       return {
@@ -360,11 +349,9 @@ class ZTEOLTService extends BaseOLTService {
         'exit'
       ];
       
-      for (const cmd of commands) {
-        await this._executeCommand(conn, cmd);
-      }
+      await this._executeSequence(conn, commands);
       
-      conn.end();
+      await conn.end();
 
       return {
         success: true,
@@ -375,7 +362,7 @@ class ZTEOLTService extends BaseOLTService {
         }
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to authorize ONU: ${error.message}`);
       throw new Error(`Failed to authorize ONU: ${error.message}`);
@@ -403,17 +390,15 @@ class ZTEOLTService extends BaseOLTService {
         'exit'
       ];
       
-      for (const cmd of commands) {
-        await this._executeCommand(conn, cmd);
-      }
+      await this._executeSequence(conn, commands);
       
-      conn.end();
+      await conn.end();
 
       return {
         success: true
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to deauthorize ONU: ${error.message}`);
       throw new Error(`Failed to deauthorize ONU: ${error.message}`);
@@ -438,13 +423,13 @@ class ZTEOLTService extends BaseOLTService {
         `pon-onu-mng gpon-onu_${rack}/${shelf}/${slot}/${port}:${onuId} reboot`
       );
       
-      conn.end();
+      await conn.end();
 
       return {
         success: true
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to reboot ONU: ${error.message}`);
       throw new Error(`Failed to reboot ONU: ${error.message}`);
@@ -469,7 +454,7 @@ class ZTEOLTService extends BaseOLTService {
         `show pon power attenuation gpon-onu_${rack}/${shelf}/${slot}/${port}:${onuId}`
       );
       
-      conn.end();
+      await conn.end();
 
       // Parse optical power values
       const rxMatch = output.match(/RX\s+power.*?:\s*(-?\d+\.?\d*)/i);
@@ -481,7 +466,7 @@ class ZTEOLTService extends BaseOLTService {
         txPower: txMatch ? parseFloat(txMatch[1]) : null
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to get optical power: ${error.message}`);
       return {
@@ -501,7 +486,7 @@ class ZTEOLTService extends BaseOLTService {
       
       const output = await this._executeCommand(conn, 'show gpon onu uncfg');
       
-      conn.end();
+      await conn.end();
 
       // Parse unconfigured ONUs
       const onus = this._parseZTEUnconfigured(output);
@@ -511,7 +496,7 @@ class ZTEOLTService extends BaseOLTService {
         onus
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to get unconfigured ONUs: ${error.message}`);
       return {
@@ -556,18 +541,16 @@ class ZTEOLTService extends BaseOLTService {
         'exit'
       ].filter(cmd => cmd); // Remove empty commands
       
-      for (const cmd of commands) {
-        await this._executeCommand(conn, cmd);
-      }
+      await this._executeSequence(conn, commands);
       
-      conn.end();
+      await conn.end();
 
       return {
         success: true,
         data: config
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to provision ONU: ${error.message}`);
       throw new Error(`Failed to provision ONU: ${error.message}`);
@@ -595,17 +578,15 @@ class ZTEOLTService extends BaseOLTService {
         'exit'
       ];
       
-      for (const cmd of commands) {
-        await this._executeCommand(conn, cmd);
-      }
+      await this._executeSequence(conn, commands);
       
-      conn.end();
+      await conn.end();
 
       return {
         success: true
       };
     } catch (error) {
-      if (conn) conn.end();
+      if (conn) await conn.end().catch(() => {});
       
       this._log('error', `Failed to set VLAN: ${error.message}`);
       throw new Error(`Failed to set VLAN: ${error.message}`);

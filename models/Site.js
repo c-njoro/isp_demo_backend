@@ -36,8 +36,15 @@ const SiteSchema = new mongoose.Schema({
       consumerKey: String,
       consumerSecret: String,
       passkey: String,
-      shortcode: String
+      shortcode: String,
+      environment: { type: String, enum: ['sandbox', 'production'], default: 'sandbox' }
     }
+  },
+
+  preferredPaymentGateway: {
+    type: String,
+    enum: ['kopokopo', 'daraja'],
+    default: 'kopokopo'
   },
 
   // Optional legacy location object (for geolocation)

@@ -54,7 +54,8 @@ exports.createSite = asyncHandler(async (req, res, next) => {
     payment,
     location,
     contactPerson,
-    isActive
+    isActive, 
+    preferredPaymentGateway
   } = req.body;
 
   // Required fields
@@ -75,7 +76,8 @@ exports.createSite = asyncHandler(async (req, res, next) => {
     payment: payment || {},
     location,
     contactPerson,
-    isActive: isActive !== undefined ? isActive : true
+    isActive: isActive !== undefined ? isActive : true,
+    preferredPaymentGateway: preferredPaymentGateway || 'kopokopo'
   });
 
   res.status(201).json({
@@ -107,7 +109,8 @@ exports.updateSite = asyncHandler(async (req, res, next) => {
     payment,
     location,
     contactPerson,
-    isActive
+    isActive,
+    preferredPaymentGateway
   } = req.body;
 
   // Log incoming data for debugging
@@ -117,6 +120,7 @@ exports.updateSite = asyncHandler(async (req, res, next) => {
   if (name) site.name = name;
   if (location) site.location = location;
   if (contactPerson) site.contactPerson = contactPerson;
+  if (preferredPaymentGateway) site.preferredPaymentGateway = preferredPaymentGateway;
   if (typeof isActive !== 'undefined') site.isActive = isActive;
 
   // Update nested objects – replace entire arrays/objects to ensure Mongoose detects changes

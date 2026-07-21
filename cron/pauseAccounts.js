@@ -91,7 +91,7 @@ async function handleLongOfflineRouters() {
 }
 
 // Schedule the cron job to run every 15 minutes
-cron.schedule('*/15 * * * *', () => {
+cron.schedule('*/45 * * * *', () => {
   checkRoutersConnectivity().catch(err => console.error('[Cron] Unhandled error:', err));
 });
 

@@ -1,41 +1,39 @@
+# Builder stage
+FROM node:18-alpine AS builder
+WORKDIR /build
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Final stage
 FROM node:18-alpine
 
-# 1. Install system dependencies
-# Using freeradius-utils to get the 'radclient' binary
-RUN echo "=== Updating APK ===" && \
-    apk update && \
-    echo "=== Installing packages ===" && \
-    apk add --no-cache dumb-init freeradius-utils && \
-    echo "=== Verifying radclient ===" && \
-    which radclient && \
-    echo "=== Cleanup ===" && \
+RUN apk update && \
+    apk add --no-cache dumb-init bash curl openssl freeradius-utils shadow python3 py3-pip && \
     rm -rf /var/cache/apk/*
 
-# 2. Setup application directory
+RUN pip3 install --no-cache-dir --break-system-packages netmiko
+
+RUN groupadd -g 987 skylink-app && \
+    useradd -u 999 -g 987 -s /bin/false -M skylink-app
+
 WORKDIR /app
 
-# 3. Create non-root user and set permissions on WORKDIR
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
-    chown nodejs:nodejs /app
+COPY --from=builder /build/node_modules ./node_modules
+COPY --from=builder /build/dist ./dist
 
-# 4. Copy package files first
-COPY package*.json ./
+COPY --from=builder --chown=skylink-app:skylink-app /build/services/olt/python /app/dist/python
 
-# 5. Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+COPY --from=builder /build/node_modules/pdfkit/js/data /app/dist/data
 
-# 6. Copy application code
-COPY --chown=nodejs:nodejs . .
+# Copy static assets (PNG for PDFs)
+COPY --from=builder /build/public ./public
 
-# 7. Security: Switch to non-root user
-USER nodejs
+RUN chown -R skylink-app:skylink-app /app
 
-# 8. Networking
 EXPOSE 5000
-
-# 9. Process Management
 ENTRYPOINT ["dumb-init", "--"]
+USER skylink-app
 
-# 10. Start Command
-CMD ["node", "server.js"]
+CMD ["node", "dist/server.js"]

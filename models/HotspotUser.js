@@ -10,6 +10,15 @@ const HotspotUserSchema = new Schema({
     uppercase: true
     // Format: F0:9F:C2:E4:6A:B1
   },
+
+  firstName: {
+    type: String,
+    default: null
+  },
+  lastName: {
+    type: String,
+    default: null
+  },
   
   phoneNumber: {
     type: String
@@ -65,6 +74,11 @@ const HotspotUserSchema = new Schema({
   lastSeenAt: {
     type: Date
   },
+
+  kickedAt: {
+    type: Date,
+    default: null,
+  },
   
   // Purchase History (limited to last 10)
   purchaseHistory: [{
@@ -78,8 +92,8 @@ const HotspotUserSchema = new Schema({
     },
     amount: Number,
     transactionId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Transaction'
+      type: String,
+      
     }
   }],
   

@@ -67,8 +67,9 @@ const RoleSchema = new Schema({
       sms: { type: Boolean, default: false },
       regions: { type: Boolean, default: false },
       reports: { type: Boolean, default: false },
-      
-
+      retention: { type: Boolean, default: true },
+      hotspot: { type: Boolean, default: false },
+      techreports: { type: Boolean, default: false },
     },
     
     // Customer Management

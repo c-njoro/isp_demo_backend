@@ -22,19 +22,18 @@ exports.login = asyncHandler(async (req, res, next) => {
   let isAdmin = false;
 
   if (!user) {
+    // Try Admin model
     user = await Admin.findOne({ username }).select('+password');
     isAdmin = true;
   }
 
   if (!user) {
-    return next(new ErrorResponse('Invalid credentials. No user', 401));
+    return next(new ErrorResponse('Invalid credentials', 400));
   }
-
-  console.log("User found")
 
   // Check if account is active
   if (!user.isActive) {
-    return next(new ErrorResponse('This account is suspended. Please contact support', 401));
+    return next(new ErrorResponse('This account is suspended by Admin. Please contact support', 401));
   }
 
   // Check if account is locked (User model only)

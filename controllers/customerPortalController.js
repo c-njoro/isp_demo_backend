@@ -210,35 +210,44 @@ exports.requestOTP = asyncHandler(async (req, res, next) => {
   customer.otp = { code: otp, expiresAt: otpExpiry, attempts: 0 };
   await customer.save();
 
-  const mobileSasaService = require('../services/mobileSasaService');
-  const smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your one time password is ${otp} and is valid until ${otpExpiry.toLocaleTimeString()}. If you did not equest it, please ignore this message.`
 
-  const smsResult = await mobileSasaService.sendSingle(customer.phoneNumber, smsMessage);
+  try{
+    const mobileSasaService = require('../services/mobileSasaService');
+    const smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your one time password is ${otp} and is valid until ${otpExpiry.toLocaleTimeString()}. If you did not equest it, please ignore this message.`
+  
+    const smsResult = await mobileSasaService.sendSingle(customer.phoneNumber, smsMessage);
 
-  if(smsResult.success){
-    await logSms(
-      { phoneNumber: customer.phoneNumber, customerId: customer?._id, accountId: customer?.accountId },
-      smsMessage,
-      'otp',
-      req.regionFilter?.regionCode || null,
-      smsResult.response,
-      'sent',
-      smsResult.cost
-    );
-
-  }else{
-    await logSms(
-      { phoneNumber: customer.phoneNumber, customerId: customer?._id, accountId: customer?.accountId },
-      smsMessage,
-      'otp',
-      req.regionFilter?.regionCode || null,
-      null,
-      'failed',
-      null,
-      { code: 'api_error'}
-    );
- 
+    if(smsResult.success){
+      await logSms(
+        { phoneNumber: customer.phoneNumber, customerId: customer?._id, accountId: customer?.accountId },
+        smsMessage,
+        'otp',
+        req.regionFilter?.regionCode || null,
+        smsResult.response,
+        'sent',
+        smsResult.cost
+      );
+  
+    }else{
+      await logSms(
+        { phoneNumber: customer.phoneNumber, customerId: customer?._id, accountId: customer?.accountId },
+        smsMessage,
+        'otp',
+        req.regionFilter?.regionCode || null,
+        null,
+        'failed',
+        null,
+        { code: 'api_error'}
+      );
+   
+    }
+  }catch(err){
+    console.error("Could not send sms: ", err);
   }
+
+
+
+
 
   await SystemLog.create({
     eventType: "customer_otp_requested",

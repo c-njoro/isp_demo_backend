@@ -33,7 +33,18 @@ const {
   syncCustomersToRadius,
   bulkImportCustomers,
   getTicketsByCustomer,
-  syncSingleCustomerToRadius
+  syncSingleCustomerToRadius,
+  addRetentionRecord,
+  getCustomerRetention,
+  searchCustomersByAccountId,
+  syncMismatchedUsernames,
+  getSyncJobStatus,
+  disableCustomer,
+  enableCustomer,
+  getCustomerDataUsage,
+  updateChildAccount,
+  addCustomerNotes,
+  getCustomerVouchers
 } = require('../controllers/customerController');
 const { protect, applyRegionFilter, adminOnly } = require('../middleware/auth');
 
@@ -43,10 +54,19 @@ router.use(applyRegionFilter);
 
 
 router.post('/sync-to-radius', protect, adminOnly, syncCustomersToRadius);
+router.post('/sync-mismatched-usernames', protect, adminOnly , syncMismatchedUsernames);
+router.get("/search-by-accountid", protect, searchCustomersByAccountId);
 router.post('/bulk-import', protect, adminOnly, bulkImportCustomers);
+// Add this line in customers.js
+router.get('/radius-sync/jobs/:jobId', protect, adminOnly, getSyncJobStatus);
+router.put('/child/:id', protect, updateChildAccount);
+
 router.route('/')
   .get(getCustomers)
   .post(createCustomer);
+
+  router.put('/:id/disable-account', protect, disableCustomer);
+  router.put('/:id/enable-account', protect, enableCustomer);
 
 router.route('/:id')
   .get(getCustomer)
@@ -69,15 +89,20 @@ router.post('/:parentId/children', protect, createChildAccount);
 router.get('/:parentId/children', protect, getChildren);
 router.post('/:id/clear-mac', clearCustomerMac);
 router.get('/:id/usage', getCustomerUsage);
+router.get('/:id/data-usage', protect, getCustomerDataUsage);
 router.get('/:id/sms-logs', getCustomerSmsLogs);
 router.post('/:id/calculate-expiry-move', calculateExpiryMove);
 router.post('/:id/move-expiry', moveExpiry);
-router.post('/:id/burst', protect, adminOnly, applyBurst);
-router.delete('/:id/burst', protect, adminOnly, removeBurst);
-router.put('/:id/override-expiry', protect, adminOnly, overrideExpiry);
-router.post('/:id/extend-expiry', protect, adminOnly, extendExpiry);
-router.post('/:id/expense', protect, adminOnly, addExpense);
+router.post('/:id/burst', protect,  applyBurst);
+router.delete('/:id/burst', protect,  removeBurst);
+router.put('/:id/override-expiry', protect,  overrideExpiry);
+router.post('/:id/extend-expiry', protect,  extendExpiry);
+router.post('/:id/expense', protect,  addExpense);
 router.post('/:id/sync-to-radius', protect, syncSingleCustomerToRadius);
+router.post('/:id/retention', protect, addRetentionRecord);
+router.get('/:id/retention', protect, getCustomerRetention);
+router.post('/:id/add-a-note', protect, addCustomerNotes);
+router.get('/:id/vouchers', protect, getCustomerVouchers);
 
 
 

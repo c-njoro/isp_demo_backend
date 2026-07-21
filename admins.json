@@ -1,0 +1,38 @@
+[
+    {
+      "username": "charles.njoroge",
+      "email": "mwanikic314@gmail.com",
+      "firstName": "Charles",
+      "lastName": "Njoroge",
+      "phoneNumber": "0788427394",
+      "password": "2026charles@#",
+      "allowedRegions": ["*"],
+      "role": "super_admin",
+      "isActive": true,
+      "mustChangePassword": true
+    },
+    {
+      "username": "hillary.langat",
+      "email": "hillarylangat@skylinknetworks.co.ke",
+      "firstName": "Hillary",
+      "lastName": "Langat",
+      "phoneNumber": "0722129731",
+      "password": "langat@26",
+      "allowedRegions": ["*"],
+      "role": "super_admin",
+      "isActive": true,
+      "mustChangePassword": true
+    },
+    {
+      "username": "ken.koech",
+      "email": "kennethkoech@skylinknetworks.co.ke",
+      "firstName": "Kenneth",
+      "lastName": "Koech",
+      "phoneNumber": "0710824515",
+      "password": "koech@26",
+      "allowedRegions": ["*"],
+      "role": "super_admin",
+      "isActive": true,
+      "mustChangePassword": true
+    }
+  ]

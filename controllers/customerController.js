@@ -5,7 +5,10 @@ const Package = require("../models/Package");
 const Site = require("../models/Site");
 const Ticket = require("../models/Ticket");
 const Router = require("../models/Router");
+const Voucher = require("../models/Voucher");
 const Transaction = require("../models/Transaction");
+const RadiusSyncJob = require("../models/RadiusSyncJobSchema");
+
 const SystemLog = require("../models/SystemLog");
 const SmsLog = require("../models/SmsLog");
 const {
@@ -121,6 +124,58 @@ async function logSms(
   await SmsLog.create(logData);
 }
 
+
+/**
+ * Helper: Propagate expiry/status changes from parent to all children that share expiry.
+ * @param {Object} parent - Parent customer document
+ * @param {Object} options - { newExpiry?: Date, newStatus?: string, radiusAction?: 'enable'|'disable' }
+ */
+async function propagateToChildren(parent, { newExpiry, newStatus, radiusAction }) {
+  if (!parent.sharedExpiry || parent.sharedExpiry.length === 0) return;
+
+  const radiusService = require("../services/radiusService");
+  const children = await Customer.find({ _id: { $in: parent.sharedExpiry } });
+
+  for (const child of children) {
+    const changes = {};
+
+    if (newExpiry !== undefined) {
+      changes['subscription.expiresAt'] = newExpiry;
+    }
+    if (newStatus !== undefined) {
+      changes['subscription.status'] = newStatus;
+    }
+
+    if (Object.keys(changes).length > 0) {
+      await Customer.updateOne({ _id: child._id }, { $set: changes });
+    }
+
+    if (radiusAction === 'enable') {
+      const packageDoc = await Package.findById(child.subscription.packageId);
+      if (packageDoc) {
+        const groupName = packageDoc.packageName.replace(/\s+/g, '_').toUpperCase();
+        await radiusService.enableAccount(child.pppoe.username, groupName);
+      }
+    } else if (radiusAction === 'disable') {
+      await radiusService.disableAccount(child.pppoe.username);
+    }
+
+    // Log for each child (optional)
+    await SystemLog.create({
+      eventType: "expiry_propagation",
+      severity: "info",
+      regionCode: child.regionCode,
+      entityType: "customer",
+      entityId: child._id,
+      accountId: child.accountId,
+      message: `Expiry/status synced from parent ${parent.accountId}`,
+      details: { parentId: parent._id, newExpiry, newStatus, radiusAction },
+      triggeredBy: 'system',
+      success: true,
+    });
+  }
+}
+
 // @desc    Get all customers
 // @route   GET /api/customers
 // @access  Private
@@ -129,6 +184,11 @@ async function logSms(
 // controllers/customerController.js (OPTION 2 - Server-side connectivity filtering)
 
 // controllers/customerController.js (FIXED OPTION 2)
+
+// ============================================
+// OPTIMIZED VERSION 2: getCustomers with Connectivity Filter
+// Replace the existing getCustomers in customerController.js
+// ============================================
 
 exports.getCustomers = asyncHandler(async (req, res, next) => {
   const {
@@ -143,22 +203,59 @@ exports.getCustomers = asyncHandler(async (req, res, next) => {
     localArea,
     nasIp,
     connectivity,
-    sortBy = "createdAt",
-    sortOrder = "desc",
+    sortBy = "accountId",
+    sortOrder = "asc",
   } = req.query;
 
-  // Build base query
+  // Base query with region filter
   const query = { ...req.regionFilter };
 
-  if (search) {
-    query.$or = [
-      { accountId: { $regex: search, $options: "i" } },
-      { firstName: { $regex: search, $options: "i" } },
-      { lastName: { $regex: search, $options: "i" } },
-      { phoneNumber: { $regex: search, $options: "i" } },
-    ];
+  // Status filter
+  if (status === 'disabled') {
+    query.isActive = false;
+  } else if (status) {
+    query.isActive = true;
+    query['subscription.status'] = status;
+  } else {
+    query.isActive = true;
   }
-  if (status) query["subscription.status"] = status;
+
+  // Exclude child accounts unless connectivity filter is present
+  if (!connectivity) {
+    query.accountId = { $not: /-/ };
+  }
+
+  // Search and other filters (unchanged)
+  if (search) {
+    const cleanSearch = search.trim();
+    const terms = cleanSearch.split(/\s+/);
+    if (terms.length >= 2) {
+      query.$or = [
+        { $and: terms.map((term, i) => ({ [i === 0 ? 'firstName' : 'lastName']: { $regex: term, $options: "i" } })) },
+        { $and: [{ lastName: { $regex: terms[0], $options: "i" } }, { firstName: { $regex: terms[1], $options: "i" } }] },
+        { accountId: { $regex: cleanSearch, $options: "i" } },
+        { phoneNumber: { $regex: cleanSearch, $options: "i" } },
+        { alternatePhoneNumber: { $regex: cleanSearch, $options: "i" } },
+        { 'pppoe.username': { $regex: cleanSearch, $options: "i" } },
+        { city: { $regex: cleanSearch, $options: "i" } },
+        { sublocation: { $regex: cleanSearch, $options: "i" } },
+        { localArea: { $regex: cleanSearch, $options: "i" } },
+      ];
+    } else {
+      query.$or = [
+        { accountId: { $regex: cleanSearch, $options: "i" } },
+        { firstName: { $regex: cleanSearch, $options: "i" } },
+        { lastName: { $regex: cleanSearch, $options: "i" } },
+        { phoneNumber: { $regex: cleanSearch, $options: "i" } },
+        { alternatePhoneNumber: { $regex: cleanSearch, $options: "i" } },
+
+        { city: { $regex: cleanSearch, $options: "i" } },
+        { sublocation: { $regex: cleanSearch, $options: "i" } },
+        { localArea: { $regex: cleanSearch, $options: "i" } },
+        { 'pppoe.username': { $regex: cleanSearch, $options: "i" } },
+      ];
+    }
+  }
   if (packageId) query["subscription.packageId"] = packageId;
   if (siteId) query.siteId = siteId;
   if (city) query.city = { $regex: city, $options: "i" };
@@ -172,172 +269,132 @@ exports.getCustomers = asyncHandler(async (req, res, next) => {
   let customers;
   let total;
 
-  // ========== CONNECTIVITY FILTER - MUST FETCH ALL FIRST ==========
-  if (connectivity) {
-    console.log(`[CONNECTIVITY FILTER] Fetching ALL customers to filter by: ${connectivity}`);
-    
-    // CRITICAL: Fetch ALL customers matching other filters (NO pagination limits!)
-    const allCustomers = await Customer.find(query)
-      .populate("subscription.packageId", "packageName price")
-      .populate("siteId", "name regionCode")
-      .select("-pppoe.password -cpe.wifiPassword")
-      .sort(sort);
-      // ⚠️ NO .limit() or .skip() here!
-
-    console.log(`[CONNECTIVITY FILTER] Found ${allCustomers.length} total customers in DB`);
-
-    if (allCustomers.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "Customers retrieved successfully",
-        data: {
-          customers: [],
-          pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, pages: 0 },
-        },
-      });
-    }
-
-    // Prepare for bulk RADIUS check
-    const usernames = allCustomers.map(c => c.pppoe.username);
-    const expectedNasIpMap = {};
-    for (const c of allCustomers) {
-      if (c.pppoe.siteIp) expectedNasIpMap[c.pppoe.username] = c.pppoe.siteIp;
-    }
-
-    console.log(`[CONNECTIVITY FILTER] Checking RADIUS status for ${usernames.length} users...`);
-
-    // Fetch real-time connectivity for ALL customers
-    const statuses = await radiusService.getBulkUserConnectionStatus(usernames, expectedNasIpMap);
-
-    // Attach connectivity to each customer
-    const customersWithStatus = [];
-    for (const customer of allCustomers) {
-      const s = statuses[customer.pppoe.username] || {};
-      let activeStatus = 'offline';
-      
-      if (s.isOnline) {
-        activeStatus = 'online';
-      } else if (s.isOnlineNoInternet) {
-        activeStatus = 'online-no-internet';
-      }
-      
-      customer._doc.connectivity = activeStatus;
-
-      // Update cache in background (fire-and-forget)
-      if (customer.connectionStatus.status !== activeStatus) {
-        customer.connectionStatus.status = activeStatus;
-        customer.connectionStatus.lastChecked = new Date();
-        customer.connectionStatus.currentIp = s.ipAddress || null;
-        customer.connectionStatus.currentNasIp = s.nasIpAddress || null;
-        if (s.callingMac) customer.connectionStatus.currentMac = s.callingMac;
-        if (s.isOnline) customer.connectionStatus.lastOnline = new Date();
-        if (!s.isOnline && !s.isOnlineNoInternet) customer.connectionStatus.lastOffline = new Date();
-        
-        customer.save({ validateBeforeSave: false }).catch(e =>
-          console.error('Failed to update connectionStatus cache:', e.message)
-        );
-      }
-
-      customersWithStatus.push(customer);
-    }
-
-    // NOW filter by the requested connectivity status
-    const filteredByConnectivity = customersWithStatus.filter(c => c._doc.connectivity === connectivity);
-    
-    console.log(`[CONNECTIVITY FILTER] After filtering by '${connectivity}': ${filteredByConnectivity.length} customers matched`);
-
-    // Set total AFTER filtering
-    total = filteredByConnectivity.length;
-
-    // Apply pagination to the FILTERED results
-    const startIndex = (parseInt(page) - 1) * parseInt(limit);
-    const endIndex = startIndex + parseInt(limit);
-    customers = filteredByConnectivity.slice(startIndex, endIndex);
-
-    console.log(`[CONNECTIVITY FILTER] Returning page ${page}: customers ${startIndex + 1}-${Math.min(endIndex, total)} of ${total}`);
-
-  } else {
-    // ========== NO CONNECTIVITY FILTER - NORMAL PAGINATION ==========
-    console.log(`[NO CONNECTIVITY FILTER] Using normal pagination`);
-    
-    // Fetch with standard pagination
+  // ---------- DISABLED CUSTOMERS ----------
+  if (status === 'disabled') {
+    total = await Customer.countDocuments(query);
+    const skip = (parseInt(page) - 1) * parseInt(limit);
     customers = await Customer.find(query)
       .populate("subscription.packageId", "packageName price")
       .populate("siteId", "name regionCode")
       .select("-pppoe.password -cpe.wifiPassword")
       .sort(sort)
+      .skip(skip)
       .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit));
+      .lean();
+    customers = customers.map(c => ({ ...c, connectivity: 'disabled' }));
+    return res.status(200).json({
+      success: true,
+      data: { customers, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } }
+    });
+  }
 
-    total = await Customer.countDocuments(query);
+  // ---------- WITH CONNECTIVITY FILTER ----------
+  if (connectivity) {
+    // Fetch all customers matching the query (no pagination yet)
+    const allCustomers = await Customer.find(query)
+      .populate("subscription.packageId", "packageName price")
+      .populate("siteId", "name regionCode")
+      .select("-pppoe.password -cpe.wifiPassword")
+      .sort(sort)
+      .lean();
 
-    if (customers.length === 0) {
+    if (allCustomers.length === 0) {
       return res.status(200).json({
         success: true,
-        message: "Customers retrieved successfully",
-        data: {
-          customers: [],
-          pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, pages: 0 },
-        },
+        data: { customers: [], pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, pages: 0 } }
       });
     }
 
-    // Fetch connectivity for the paginated results only
-    const usernames = customers.map(c => c.pppoe.username);
-    const expectedNasIpMap = {};
-    for (const c of customers) {
-      if (c.pppoe.siteIp) expectedNasIpMap[c.pppoe.username] = c.pppoe.siteIp;
-    }
+    const usernames = allCustomers.map(c => c.pppoe.username);
+    const statuses = await radiusService.getBulkUserConnectionStatus(usernames);
 
-    const statuses = await radiusService.getBulkUserConnectionStatus(usernames, expectedNasIpMap);
+    // Build connectivity (no cache fallback; no active session = offline)
+    const customersWithConnectivity = allCustomers.map(customer => {
+      const radiusStatus = statuses[customer.pppoe.username];
+      const isOnline = radiusStatus?.isOnline === true;
+      return { ...customer, connectivity: isOnline ? 'online' : 'offline' };
+    });
 
-    // Attach connectivity to each customer
-    for (const customer of customers) {
-      const s = statuses[customer.pppoe.username] || {};
-      let activeStatus = 'offline';
-      
-      if (s.isOnline) {
-        activeStatus = 'online';
-      } else if (s.isOnlineNoInternet) {
-        activeStatus = 'online-no-internet';
-      }
-      
-      customer._doc.connectivity = activeStatus;
+    const filtered = customersWithConnectivity.filter(c => c.connectivity === connectivity);
+    total = filtered.length;
+    const start = (parseInt(page) - 1) * parseInt(limit);
+    const end = start + parseInt(limit);
+    customers = filtered.slice(start, end);
 
-      // Update cache in background
-      if (customer.connectionStatus.status !== activeStatus) {
-        customer.connectionStatus.status = activeStatus;
-        customer.connectionStatus.lastChecked = new Date();
-        customer.connectionStatus.currentIp = s.ipAddress || null;
-        customer.connectionStatus.currentNasIp = s.nasIpAddress || null;
-        if (s.callingMac) customer.connectionStatus.currentMac = s.callingMac;
-        if (s.isOnline) customer.connectionStatus.lastOnline = new Date();
-        if (!s.isOnline && !s.isOnlineNoInternet) customer.connectionStatus.lastOffline = new Date();
-        
-        customer.save({ validateBeforeSave: false }).catch(e =>
-          console.error('Failed to update connectionStatus cache:', e.message)
-        );
-      }
-    }
+    return res.status(200).json({
+      success: true,
+      data: { customers, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } }
+    });
   }
 
-  // Prevent browser caching
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+  // ---------- NO CONNECTIVITY FILTER – PAGINATED WITH LIVE STATUS ----------
+  total = await Customer.countDocuments(query);
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+
+  customers = await Customer.find(query)
+    .populate("subscription.packageId", "packageName price")
+    .populate("siteId", "name regionCode")
+    .select("-pppoe.password -cpe.wifiPassword")
+    .sort(sort)
+    .skip(skip)
+    .limit(parseInt(limit))
+    .lean();
+
+  // Get live RADIUS status for the paginated customers
+  const usernames = customers.map(c => c.pppoe?.username).filter(Boolean);
+  if (usernames.length > 0) {
+    const liveStatuses = await radiusService.getBulkUserConnectionStatus(usernames);
+    customers = customers.map(customer => {
+      const live = liveStatuses[customer.pppoe.username];
+      const liveConnectivity = live?.isOnline === true ? 'online' : 'offline';
+      return { ...customer, connectivity: liveConnectivity };
+    });
+  } else {
+    // No PPPoE username – cannot be online
+    customers = customers.map(c => ({ ...c, connectivity: 'offline' }));
+  }
 
   res.status(200).json({
     success: true,
-    message: "Customers retrieved successfully",
-    data: {
-      customers: customers,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: total,
-        pages: Math.ceil(total / parseInt(limit)),
-      },
-    },
+    data: { customers, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) } }
+  });
+});
+
+
+/**
+ * @desc    Search customers by account ID only (includes child accounts)
+ * @route   GET /api/customers/search-by-accountid
+ * @access  Private
+ * @query   { string } q - search query (minimum 2 characters)
+ * @query   { number } limit - default 10
+ */
+exports.searchCustomersByAccountId = asyncHandler(async (req, res, next) => {
+  const { q, limit = 10 } = req.query;
+
+  if (!q || q.trim().length < 2) {
+    return res.status(200).json({
+      success: true,
+      data: [],
+      message: "Search query must be at least 2 characters",
+    });
+  }
+
+  // Build region filter (respect admin's region access)
+  const query = { ...req.regionFilter };
+
+  // Search by accountId only – case‑insensitive partial match
+  query.accountId = { $regex: q, $options: "i" };
+
+  const customers = await Customer.find(query)
+    .populate("subscription.packageId", "packageName price")
+    .populate("siteId", "name")
+    .select("accountId firstName lastName phoneNumber")
+    .limit(parseInt(limit))
+    .sort({ accountId: 1 });
+
+  res.status(200).json({
+    success: true,
+    data: customers,
   });
 });
 
@@ -415,6 +472,8 @@ exports.createCustomer = asyncHandler(async (req, res, next) => {
     serialNumber,
     notes,
     fupEnabled,
+    installationFee,
+    category
   } = req.body;
 
   // Validate required fields
@@ -453,19 +512,21 @@ exports.createCustomer = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Only PPPoE packages allowed", 400));
 
   const formattedPhone = formatPhoneNumber(phoneNumber);
-  let existing = await Customer.findOne({
-    phoneNumber: formattedPhone,
-    regionCode: site.regionCode
-  });
-  if (existing)
-    return next(new ErrorResponse("Phone number already registered", 400));
+  // In createCustomer
+const existing = await Customer.findOne({
+  phoneNumber: formattedPhone,
+  regionCode: site.regionCode,
+  isChild: false
+});
+if (existing) return next(new ErrorResponse("Phone number already registered", 400));
 
-  existing = await Customer.findOne({
-    alternatePhoneNumber: formattedPhone,
-    regionCode: site.regionCode,
-  });
-  if (existing)
-    return next(new ErrorResponse("Phone number already registered as an alternate.", 400));
+// Alternate phone check also needs isChild: false
+const existingAlt = await Customer.findOne({
+  alternatePhoneNumber: formattedPhone,
+  regionCode: site.regionCode,
+  isChild: false
+});
+if (existingAlt) return next(new ErrorResponse("Phone number already registered as an alternate.", 400));
 
   const accountId = await generateAccountId(site.regionCode);
   const pppoePassword = generatePPPoEPassword();
@@ -504,8 +565,12 @@ exports.createCustomer = asyncHandler(async (req, res, next) => {
       expiresAt,
       autoRenew: true,
     },
+    billing:{
+      balance: installationFee ? `-${installationFee}` : 0
+    },
     fupEnabled: fupEnabled === true && packageDoc.fup?.enabled ? true : false,
     createdBy: req.session.userId,
+    category: category || 'residential',
   });
 
   if (notes) {
@@ -538,7 +603,7 @@ exports.createCustomer = asyncHandler(async (req, res, next) => {
     : `RADIUS error: ${radiusResult.error}\n`;
 
   // Set billing cycle start
-  await radiusService.setBillingCycleStart(customer.pppoe.username, now);
+  await radiusService.setBillingCycleStart(customer.pppoe.username, new Date());
 
   const smsTemplateService = require('../services/smsTemplateService');
 
@@ -645,6 +710,8 @@ exports.updateCustomer = asyncHandler(async (req, res, next) => {
     .populate("siteId")
     .populate("subscription.packageId");
 
+    const site = customer.siteId;
+
   if (!customer) {
     return next(new ErrorResponse("Customer not found", 404));
   }
@@ -677,6 +744,8 @@ exports.updateCustomer = asyncHandler(async (req, res, next) => {
 
     // Notes
     notes,
+
+    category,
   } = req.body;
 
   // BLOCK site and PPPoE changes
@@ -717,41 +786,70 @@ exports.updateCustomer = asyncHandler(async (req, res, next) => {
     customer.idNumber = idNumber;
   }
 
+  if(category && (!customer.category || customer.category !== category)){
+    changes.category = {old: customer.category || "Blank", new: category}
+    customer.category = category;
+  }
+
   // ============================================
   // PHONE NUMBERS
   // ============================================
 
-  if (phoneNumber) {
-    const formattedPhone = formatPhoneNumber(phoneNumber);
+// PHONE NUMBERS
+// ============================================
+// PHONE NUMBERS
+// ============================================
 
-    if (formattedPhone !== customer.phoneNumber) {
-      // Check duplicates
-      const existing = await Customer.findOne({
-        phoneNumber,
+if (phoneNumber) {
+  const formattedPhone = formatPhoneNumber(phoneNumber);
+  if (formattedPhone !== customer.phoneNumber) {
+    // Check uniqueness for primary accounts (excluding self)
+    const existing = await Customer.findOne({
+      phoneNumber: formattedPhone,
+      regionCode: customer.regionCode,
+      isChild: false,
+      _id: { $ne: customer._id }
+    });
+    if (existing) {
+      return next(new ErrorResponse("Phone number already registered in this region", 400));
+    }
+    changes.phoneNumber = { old: customer.phoneNumber, new: formattedPhone };
+    customer.phoneNumber = formattedPhone;
+  }
+}
+
+if (alternatePhoneNumber !== undefined) {
+  const formattedAltPhone = alternatePhoneNumber ? formatPhoneNumber(alternatePhoneNumber) : null;
+  if (formattedAltPhone !== customer.alternatePhoneNumber) {
+    if (formattedAltPhone) {
+      // Check if this number is already used as a primary phone by another account
+      const existingAsPrimary = await Customer.findOne({
+        phoneNumber: formattedAltPhone,
+        regionCode: customer.regionCode,
         isChild: false,
+        _id: { $ne: customer._id }
       });
-
-      if (existing) {
-        return next(new ErrorResponse("Phone number already registered", 400));
+      if (existingAsPrimary) {
+        return next(new ErrorResponse("Alternate phone number already used as primary in this region", 400));
       }
-
-      changes.phoneNumber = { old: customer.phoneNumber, new: formattedPhone };
-      customer.phoneNumber = formattedPhone;
+      // Check if this number is already used as an alternate by another account
+      const existingAsAlternate = await Customer.findOne({
+        alternatePhoneNumber: formattedAltPhone,
+        regionCode: customer.regionCode,
+        isChild: false,
+        _id: { $ne: customer._id }
+      });
+      if (existingAsAlternate) {
+        return next(new ErrorResponse("Alternate phone number already in use by another account in this region", 400));
+      }
     }
+    changes.alternatePhoneNumber = {
+      old: customer.alternatePhoneNumber,
+      new: formattedAltPhone,
+    };
+    customer.alternatePhoneNumber = formattedAltPhone;
   }
-
-  if (alternatePhoneNumber !== undefined) {
-    const formattedAltPhone = alternatePhoneNumber
-      ? formatPhoneNumber(alternatePhoneNumber)
-      : null;
-    if (formattedAltPhone !== customer.alternatePhoneNumber) {
-      changes.alternatePhoneNumber = {
-        old: customer.alternatePhoneNumber,
-        new: formattedAltPhone,
-      };
-      customer.alternatePhoneNumber = formattedAltPhone;
-    }
-  }
+}
 
   // ============================================
   // LOCATION
@@ -960,6 +1058,24 @@ if (location) {
 
   await customer.save();
 
+
+    // Update site coverage (these are non-critical, failures are logged but don't block)
+    try {
+      await site.addCityIfNotExists(city);
+    } catch (err) {
+      console.warn('Failed to add city to site coverage:', err.message);
+    }
+    try {
+      await site.addSubLocationIfNotExists(city, subLocation);
+    } catch (err) {
+      console.warn('Failed to add sub-location to site coverage:', err.message);
+    }
+    try {
+      await site.addLocalAreaIfNotExists(city, subLocation, localArea);
+    } catch (err) {
+      console.warn('Failed to add local area to site coverage:', err.message);
+    }
+
   // ============================================
   // LOG CHANGES
   // ============================================
@@ -1004,9 +1120,17 @@ if (location) {
 exports.suspendCustomer = asyncHandler(async (req, res, next) => {
   const customer = await Customer.findById(req.params.id);
 
+  
+
   if (!customer) {
     return next(new ErrorResponse("Customer not found", 404));
   }
+
+
+  if (customer.isChild && customer.shared?.expiryWithParent) {
+    return next(new ErrorResponse("Cannot pause a child account that shares expiry with parent.", 400));
+  }
+
 
   // Check region access
   if (
@@ -1031,15 +1155,46 @@ exports.suspendCustomer = asyncHandler(async (req, res, next) => {
     timestamp: new Date(),
   };
 
-  if (reason) {
+
     customer.notes.push({
-      note: `Account suspended: ${reason}`,
+      note: `Account subscription paused.`,
       addedBy: req.session.userId,
       createdAt: new Date(),
     });
+  
+
+
+
+  if(customer.isChild && customer.shared.expiryWithParent){
+    customer.shared.expiryWithParent = false;
+
+    await Customer.findByIdAndUpdate(customer.parentAccount, {
+      $pull: { sharedExpiry: customer._id }
+  });
   }
 
   await customer.save();
+
+  // Propagate suspension to children that share expiry
+if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+  // For children, we also set subscription.status = 'suspended' and pausedAt = now
+  const now = new Date();
+  await Customer.updateMany(
+    { _id: { $in: customer.sharedExpiry } },
+    {
+      $set: {
+        'subscription.status': 'suspended',
+        'subscription.pausedAt': now,
+      }
+    }
+  );
+  // Disable RADIUS for each child
+  const radiusService = require("../services/radiusService");
+  const children = await Customer.find({ _id: { $in: customer.sharedExpiry } });
+  for (const child of children) {
+    await radiusService.disableAccount(child.pppoe.username);
+  }
+}
 
   let serversResults = "";
 
@@ -1087,6 +1242,10 @@ exports.reactivateCustomer = asyncHandler(async (req, res, next) => {
 
   if (!customer) {
     return next(new ErrorResponse("Customer not found", 404));
+  }
+
+  if (customer.isChild && customer.shared?.expiryWithParent) {
+    return next(new ErrorResponse("Cannot reactivate a child account that shares expiry with parent.", 400));
   }
 
   // Check region access
@@ -1181,6 +1340,28 @@ exports.reactivateCustomer = asyncHandler(async (req, res, next) => {
 
   await customer.save();
 
+  // Propagate reactivation to children
+if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+  const now = new Date();
+  const suspensionDuration = now - customer.subscription.pausedAt; // pausedAt is cleared on parent already
+  // For each child, add same duration to expiry
+  const children = await Customer.find({ _id: { $in: customer.sharedExpiry } });
+  for (const child of children) {
+    const newExpiry = new Date(child.subscription.expiresAt.getTime() + suspensionDuration);
+    child.subscription.expiresAt = newExpiry;
+    child.subscription.status = 'active';
+    child.subscription.pausedAt = null;
+    await child.save();
+
+    // Enable RADIUS
+    const packageDoc = await Package.findById(child.subscription.packageId);
+    if (packageDoc) {
+      const groupName = packageDoc.packageName.replace(/\s+/g, '_').toUpperCase();
+      await radiusService.enableAccount(child.pppoe.username, groupName);
+    }
+  }
+}
+
   // Log reactivation
   await SystemLog.create({
     eventType: "admin_action",
@@ -1250,12 +1431,200 @@ exports.changePackage = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Previous Package not found", 404));
   }
 
+    // Propagation helper for children that share package
+    const propagateToChildrenPackage = async (newPackageDoc, parentExpiry, parentStatus) => {
+      if (!customer.sharedPackage || customer.sharedPackage.length === 0) return;
+  
+      const radiusService = require("../services/radiusService");
+      const children = await Customer.find({ _id: { $in: customer.sharedPackage } }).populate('subscription.packageId');
+  
+      for (const child of children) {
+        child.subscription.packageId = newPackageDoc._id;
+  
+        if (child.shared?.expiryWithParent) {
+          child.subscription.expiresAt = parentExpiry;
+          child.subscription.status = parentStatus;
+          if (parentStatus === 'active' && !child.subscription.activatedAt) {
+            child.subscription.activatedAt = new Date();
+          }
+        }
+  
+        await child.save();
+  
+        const groupName = newPackageDoc.packageName.replace(/\s+/g, '_').toUpperCase();
+        await radiusService.updateBandwidth(child.pppoe.username, newPackageDoc.speed.upload, newPackageDoc.speed.download, groupName);
+        if (child.subscription.status === 'active') {
+          await radiusService.enableAccount(child.pppoe.username, groupName);
+        } else {
+          await radiusService.disableAccount(child.pppoe.username);
+        }
+  
+        await SystemLog.create({
+          eventType: "package_propagation",
+          severity: "info",
+          regionCode: child.regionCode,
+          entityType: "customer",
+          entityId: child._id,
+          accountId: child.accountId,
+          message: `Package updated to ${newPackageDoc.packageName} due to parent ${customer.accountId} change${child.shared?.expiryWithParent ? ' (expiry also synced)' : ''}`,
+          details: {
+            parentId: customer._id,
+            oldPackage: previousPackage.packageName,
+            newPackage: newPackageDoc.packageName,
+            syncExpiry: !!child.shared?.expiryWithParent,
+            newExpiry: child.subscription.expiresAt,
+            newStatus: child.subscription.status,
+          },
+          triggeredBy: req.user._id,
+          success: true,
+        });
+      }
+    };
+
+  if (customer.subscription.status === "expired") {
+    const now = new Date();
+    const balance = customer.billing?.balance || 0;
+  
+    // Always update the package ID (the customer wants to change plan)
+    customer.subscription.packageId = newPackage._id;
+  
+    if (balance >= newPackage.price) {
+      // Has enough balance – proceed with activation (either immediate or wait for session)
+      const radiusService = require("../services/radiusService");
+      let hasActiveSession = false;
+      try {
+        hasActiveSession = await radiusService.hasActiveSession(customer.pppoe.username);
+      } catch (err) {
+        console.error(`Session check failed for ${customer.accountId}:`, err.message);
+      }
+  
+      if (!hasActiveSession) {
+        // No active session – mark waiting, don't deduct yet
+        customer.waitingForSession = true;
+        customer.notes.push({
+          note: `Package changed from ${previousPackage.packageName} to ${newPackage.packageName} (awaiting session)`,
+          addedBy: req.user._id,
+          createdAt: now,
+        });
+        await customer.save();
+        await radiusService.addPendingActivation(customer.pppoe.username); 
+
+        await propagateToChildrenPackage(newPackage, customer.subscription.expiresAt, 'expired');
+  
+        await SystemLog.create({
+          eventType: "admin_action",
+          severity: "info",
+          regionCode: customer.regionCode,
+          entityType: "customer",
+          entityId: customer._id,
+          accountId: customer.accountId,
+          message: `Package changed for ${customer.accountId} (waiting for session)`,
+          details: { oldPackage: oldPackageId, newPackage: packageId },
+          triggeredBy: req.user._id,
+          success: true,
+        });
+  
+        return res.status(200).json({
+          success: true,
+          message: "Package changed. Customer will be activated when they connect.",
+          data: customer,
+        });
+      } else {
+        // Active session – deduct and activate immediately
+        customer.billing.balance = balance - newPackage.price;
+        let newExpiry = calculatePeriodEnd(now, newPackage.period, newPackage.periodUnit);
+        if (customer.freeExtensionDays > 0) {
+          newExpiry = new Date(newExpiry);
+          newExpiry.setDate(newExpiry.getDate() - customer.freeExtensionDays);
+          if (newExpiry < now) newExpiry = now;
+          customer.freeExtensionDays = 0;
+        }
+        customer.subscription.status = "active";
+        customer.subscription.expiresAt = newExpiry;
+        customer.subscription.activatedAt = now;
+        customer.waitingForSession = false;
+        
+        if (!customer.renewals) customer.renewals = [];
+        customer.renewals.push({ dateRenewed: now, method: "wallet", amount: newPackage.price });
+  
+        await customer.save();
+  
+        // RADIUS updates
+        const groupName = newPackage.packageName.replace(/\s+/g, "_").toUpperCase();
+        await radiusService.setBillingCycleStart(customer.pppoe.username, new Date());
+        await radiusService.updateBandwidth(customer.pppoe.username, newPackage.speed.upload, newPackage.speed.download, groupName);
+        await radiusService.enableAccount(customer.pppoe.username, groupName);
+        await radiusService.removePendingActivation(customer.pppoe.username); 
+  
+        if (customer.fupEnabled && newPackage.fup?.enabled) {
+          const quotaBytes = newPackage.fup.dataThresholdGB * 1024 * 1024 * 1024;
+          await radiusService.enableFUPForCustomer(customer.pppoe.username, quotaBytes);
+        } else if (!newPackage.fup?.enabled) {
+          await radiusService.disableFUPForCustomer(customer.pppoe.username);
+          customer.fupEnabled = false;
+        }
+
+        await propagateToChildrenPackage(newPackage, newExpiry, 'active');
+  
+        await SystemLog.create({
+          eventType: "admin_action",
+          severity: "info",
+          regionCode: customer.regionCode,
+          entityType: "customer",
+          entityId: customer._id,
+          accountId: customer.accountId,
+          message: `Package changed and activated for ${customer.accountId}`,
+          details: { oldPackage: oldPackageId, newPackage: packageId, amountDeducted: newPackage.price, newExpiry },
+          triggeredBy: req.user._id,
+          success: true,
+        });
+  
+        await customer.populate("subscription.packageId siteId");
+        return res.status(200).json({
+          success: true,
+          message: "Package changed and customer activated immediately.",
+          data: customer,
+        });
+      }
+    } else {
+      // Insufficient balance – only change package, do NOT activate or deduct
+      customer.notes.push({
+        note: `Package changed from ${previousPackage.packageName} to ${newPackage.packageName} (insufficient balance – remains expired)`,
+        addedBy: req.user._id,
+        createdAt: now,
+      });
+      await customer.save();
+
+      await propagateToChildrenPackage(newPackage, customer.subscription.expiresAt, 'expired');
+  
+      await SystemLog.create({
+        eventType: "admin_action",
+        severity: "info",
+        regionCode: customer.regionCode,
+        entityType: "customer",
+        entityId: customer._id,
+        accountId: customer.accountId,
+        message: `Package changed for ${customer.accountId} (expired, insufficient balance)`,
+        details: { oldPackage: oldPackageId, newPackage: packageId, balance, required: newPackage.price },
+        triggeredBy: req.user._id,
+        success: true,
+      });
+  
+      await customer.populate("subscription.packageId siteId");
+      return res.status(200).json({
+        success: true,
+        message: "Package changed successfully (customer remains expired due to insufficient balance).",
+        data: customer,
+      });
+    }
+  }
+
   // --- Override mode: skip all financial checks ---
   if (override) {
     // Directly update package without any balance/downgrade restrictions
     customer.subscription.packageId = packageId;
     customer.notes.push({
-      note: `Package changed from ${oldPackageId} to ${packageId} (OVERRIDE MODE - no financial checks)`,
+      note: `Package changed from ${oldPackageId.packageName} to ${packageId.packageName} (OVERRIDE MODE - no financial checks)`,
       addedBy: req.user._id,
       createdAt: new Date(),
     });
@@ -1286,7 +1655,16 @@ exports.changePackage = asyncHandler(async (req, res, next) => {
       customer.fupEnabled = false;
     }
 
+    
+
+    
+
+
+
+
     await customer.save();
+
+    await propagateToChildrenPackage(newPackage, customer.subscription.expiresAt, customer.subscription.status);
 
     await SystemLog.create({
       eventType: "admin_action",
@@ -1328,6 +1706,31 @@ exports.changePackage = asyncHandler(async (req, res, next) => {
       }
       customer.billing.balance = balance - priceDiff;
       willHaveConnection = true;
+        // 1. Create Transaction (negative, type EXPENSE)
+  const transaction = await Transaction.create({
+    type: "PLAN_CHANGE",
+    customerType: "pppoe", // or could be hotspot, but we handle generically
+    customerId: customer._id,
+    accountId: customer.accountId,
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    regionCode: customer.regionCode,
+    siteId: customer.siteId,
+    amount: `-${newPrice - oldPrice}`,  // negative
+    description: `Package upgrade`,
+    paymentMethod: "wallet", 
+    status: "completed",
+    metadata: {
+      
+      category: "Package upgrade",
+      deductedBy: req.session.userId,
+    },
+  });
+
+  await transaction.save();
+
+
+
     }
   } else if (newPrice < oldPrice) {
     // DOWNGRADE
@@ -1345,6 +1748,9 @@ exports.changePackage = asyncHandler(async (req, res, next) => {
         });
         willHaveConnection = true;
       }
+
+
+
     } else {
       return next(
         new ErrorResponse(
@@ -1358,7 +1764,7 @@ exports.changePackage = asyncHandler(async (req, res, next) => {
 
   customer.subscription.packageId = packageId;
   customer.notes.push({
-    note: `Package changed from ${oldPackageId} to ${packageId}`,
+    note: `Package changed from ${previousPackage.packageName} to ${newPackage.packageName}`,
     addedBy: req.user._id,
     createdAt: new Date(),
   });
@@ -1392,6 +1798,12 @@ exports.changePackage = asyncHandler(async (req, res, next) => {
   }
 
   await customer.save();
+
+  if (willHaveConnection) {
+    await propagateToChildrenPackage(newPackage, customer.subscription.expiresAt, 'active');
+  } else {
+    await propagateToChildrenPackage(newPackage, customer.subscription.expiresAt, customer.subscription.status);
+  }
 
   await SystemLog.create({
     eventType: "admin_action",
@@ -1468,6 +1880,13 @@ exports.deleteCustomer = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse("Customer not found", 404));
   }
 
+  const children = await Customer.find({parentAccount: customer._id});
+
+  if(children && children.length > 0){
+    return next(new ErrorResponse("Customer has children accounts!", 404));
+  
+  }
+
   // Check region access
   if (
     req.regionFilter.regionCode &&
@@ -1500,6 +1919,100 @@ exports.deleteCustomer = asyncHandler(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: "Customer deleted successfully",
+    data: null,
+  });
+});
+
+
+// @desc    Delete customer
+// @route   PUT /api/customers/:id/disable-account
+// @access  Private (Admin only)
+exports.disableCustomer = asyncHandler(async (req, res, next) => {
+  const customer = await Customer.findById(req.params.id);
+
+  if (!customer) {
+    return next(new ErrorResponse("Customer not found", 404));
+  }
+
+  if(customer.subscription.status !== 'expired' ){
+    return next(new ErrorResponse("Customer is Active", 404));
+  }
+
+  // Check region access
+  if (
+    req.regionFilter.regionCode &&
+    customer.regionCode !== req.regionFilter.regionCode
+  ) {
+    return next(new ErrorResponse("Access denied to this customer", 403));
+  }
+
+  // Soft delete – mark as inactive
+  customer.isActive = false;
+  customer.notes.push({
+    note: "Account disabled",
+    addedBy: req.session.userId,
+  });
+
+  await customer.save();
+
+  const radiusService = require("../services/radiusService");
+
+  const radiusResult = await radiusService.disableAccount(
+    customer.pppoe.username,
+  );
+  if (!radiusResult.success) {
+    console.error("RADIUS disable failed:", radiusResult.error);
+  } else {
+    console.log("RADIUS disable successful");
+  }
+
+
+  res.status(200).json({
+    success: true,
+    message: "Customer disabled successfully",
+    data: null,
+  });
+});
+
+exports.enableCustomer = asyncHandler(async (req, res, next) => {
+  const customer = await Customer.findById(req.params.id);
+
+  if (!customer) {
+    return next(new ErrorResponse("Customer not found", 404));
+  }
+
+  // Check region access
+  if (
+    req.regionFilter.regionCode &&
+    customer.regionCode !== req.regionFilter.regionCode
+  ) {
+    return next(new ErrorResponse("Access denied to this customer", 403));
+  }
+
+  // Soft delete – mark as inactive
+  customer.isActive = true;
+  customer.notes.push({
+    note: "Account enabled",
+    addedBy: req.session.userId,
+  });
+
+  await customer.save()
+
+  // const radiusService = require("../services/radiusService");
+
+  // const radiusResult = await radiusService.Account(
+  //   customer.pppoe.username,
+  // );
+  // if (!radiusResult.success) {
+  //   console.error("RADIUS disable failed:", radiusResult.error);
+  // } else {
+  //   console.log("RADIUS disable successful");
+  // }
+
+
+  res.status(200).json({
+    success: true,
+    message: "Customer enabled successfully",
     data: null,
   });
 });
@@ -1791,9 +2304,9 @@ exports.migrateCustomer = asyncHandler(async (req, res, next) => {
 exports.changePassword = asyncHandler(async (req, res, next) => {
   const { newPassword } = req.body;
 
-  if (!newPassword || newPassword.length < 8) {
+  if (!newPassword ) {
     return next(
-      new ErrorResponse("Password must be at least 8 characters", 400),
+      new ErrorResponse("Password not provided", 400),
     );
   }
 
@@ -1816,36 +2329,7 @@ exports.changePassword = asyncHandler(async (req, res, next) => {
 
   console.log(`🔐 Changing password for ${customer.accountId}...`);
 
-  // Get router for the customer
-  try {
-    const router = await getRouterForCustomer(customer, false);
-
-    if (router) {
-      // Update in Mikrotik
-      const mikrotikService = require("../services/mikrotikService");
-      const siteObj = buildSiteLikeObjectFromRouter(router);
-      const mikrotikResult = await mikrotikService.updatePPPoEPassword(
-        siteObj,
-        customer.pppoe.username,
-        newPassword,
-      );
-
-      if (!mikrotikResult.success) {
-        console.error(
-          "⚠️ Mikrotik password update failed:",
-          mikrotikResult.error,
-        );
-      } else {
-        console.log("✅ Mikrotik password updated");
-      }
-    } else {
-      console.warn(
-        "⚠️ No router found for this customer, skipping Mikrotik update",
-      );
-    }
-  } catch (routerError) {
-    console.error("⚠️ Error getting router:", routerError.message);
-  }
+ 
 
   // Update in RADIUS
   const radiusService = require("../services/radiusService");
@@ -2050,7 +2534,7 @@ exports.getCustomerRouterStatus = asyncHandler(async (req, res, next) => {
         `SELECT acctstoptime FROM radacct 
          WHERE username = ? AND acctstoptime IS NOT NULL 
          ORDER BY acctstoptime DESC LIMIT 1`,
-        [username],
+        [username]
       );
       if (rows.length > 0 && rows[0].acctstoptime) {
         return new Date(rows[0].acctstoptime);
@@ -2064,7 +2548,6 @@ exports.getCustomerRouterStatus = asyncHandler(async (req, res, next) => {
     }
   };
 
-  // Helper: format duration (seconds) into human-readable string
   const formatDuration = (seconds) => {
     if (!seconds || seconds <= 0) return "0s";
     const days = Math.floor(seconds / 86400);
@@ -2079,165 +2562,143 @@ exports.getCustomerRouterStatus = asyncHandler(async (req, res, next) => {
     return parts.join(" ");
   };
 
-  const expectedNasIp = customer.pppoe.siteIp || null;
-
-  if (expectedNasIp) {
-    const mikrotikService = require("../services/mikroticService");
-    const router = await Router.findOne({ ip: expectedNasIp });
-    if (router) {
-      const testResult = await mikrotikService.testConnection({
-        router: {
-          ip: expectedNasIp,
-          username: router.username,
-          password: router.password,
-          port: router.apiPort || 8728,
-        },
-      });
-      if (!testResult.success) {
-        // Get last session end time for offline duration
-        const lastEndTime = await getLastSessionEndTime(customer.pppoe.username);
-        const lastSeen = lastEndTime || customer.createdAt;
-        let offlineSince = lastSeen;
-        let offlineDuration = null;
-        if (offlineSince) {
-          const offlineMs = Date.now() - new Date(offlineSince).getTime();
-          offlineDuration = formatDuration(Math.floor(offlineMs / 1000));
-        }
-
-        const offlineSiteData = {
-          customerInfo: {
-            username: customer.pppoe.username,
-            accountId: customer.accountId,
-            name: `${customer.firstName} ${customer.lastName}`,
-            package: customer.subscription?.packageId?.packageName || "N/A",
-          },
-          routerInfo: {
-            routerIp: expectedNasIp,
-            siteName: customer.siteId?.siteName || "Unknown",
-          },
-          status: "offline",
-          connectionInfo: {
-            reason: "Router Unreachable",
-            ipAddress: null,
-            macAddress: customer.cpe?.macAddress || null,
-            uptime: null,
-            uptimeSeconds: 0,
-            offlineSince: offlineSince.toISOString(),
-            offlineDuration,
-            lastSeen: lastSeen.toISOString(),
-            routerBrand: customer.cpe?.model || null,
-          },
-        };
-        return res.status(200).json({ success: true, data: offlineSiteData });
-      }
-    }
-  }
-
-  // Helper to get last session end time from RADIUS
-
-
-  // Helper to fetch latest auth attempt from the new logging table
-  const getLatestAuthAttempt = async (username, authResult = null) => {
+  // Fetch latest authentication result from radius_auth_log
+  const getLatestAuthResult = async (username) => {
     let conn;
     try {
       conn = await radiusService.getConnection();
-      
-      let query = `SELECT password, calling_station_id, nas_ip_address, auth_result, auth_timestamp 
-                   FROM radius_auth_log 
-                   WHERE username = ?`;
-      const params = [username];
-      
-      if (authResult) {
-        query += ` AND auth_result = ?`;
-        params.push(authResult);
+      const [rows] = await conn.query(
+        `SELECT auth_result, auth_timestamp, password, calling_station_id, nas_ip_address
+         FROM radius_auth_log
+         WHERE username = ?
+         ORDER BY auth_timestamp DESC
+         LIMIT 1`,
+        [username]
+      );
+      if (rows.length === 0) return null;
+      let decodedPassword = null;
+      try {
+        decodedPassword = Buffer.from(rows[0].password, "base64").toString("utf8");
+      } catch (e) {
+        decodedPassword = rows[0].password;
       }
-      
-      query += ` ORDER BY auth_timestamp DESC LIMIT 1`;
-      
-      const [rows] = await conn.query(query, params);
-      
-      if (rows.length > 0) {
-        let decodedPassword = null;
-      
-        try {
-          decodedPassword = Buffer.from(rows[0].password, "base64").toString("utf8");
-        } catch (e) {
-          // fallback in case old records are not base64
-          decodedPassword = rows[0].password;
-        }
-      
-        return {
-          attemptedPassword: decodedPassword,
-          timestamp: rows[0].auth_timestamp,
-          authResult: rows[0].auth_result,
-          callingStationId: rows[0].calling_station_id,
-          nasIpAddress: rows[0].nas_ip_address,
-        };
-      }
+      return {
+        authResult: rows[0].auth_result,
+        timestamp: rows[0].auth_timestamp,
+        attemptedPassword: decodedPassword,
+        callingStationId: rows[0].calling_station_id,
+        nasIpAddress: rows[0].nas_ip_address,
+      };
     } catch (err) {
-      console.error("Error fetching auth attempt:", err);
+      console.error("Error fetching auth log:", err);
       return null;
     } finally {
       if (conn) conn.release();
     }
-    return null;
   };
 
-  const statusResult = await radiusService.getUserConnectionStatus(
+  // Check router reachability (unchanged – only for offline reason)
+  const expectedNasIp = customer.pppoe.siteIp || null;
+  // if (expectedNasIp) {
+  //   const mikrotikService = require("../services/mikroticService");
+  //   const router = await Router.findOne({ ip: expectedNasIp });
+  //   if (router) {
+  //     const testResult = await mikrotikService.testConnection({
+  //       router: {
+  //         ip: expectedNasIp,
+  //         username: router.username,
+  //         password: router.password,
+  //         port: router.apiPort || 8728,
+  //       },
+  //     });
+  //     if (!testResult.success) {
+  //       const lastEndTime = await getLastSessionEndTime(customer.pppoe.username);
+  //       const lastSeen = lastEndTime || customer.createdAt;
+  //       const offlineSince = lastSeen;
+  //       const offlineMs = Date.now() - new Date(offlineSince).getTime();
+  //       const offlineDuration = formatDuration(Math.floor(offlineMs / 1000));
+
+  //       return res.status(200).json({
+  //         success: true,
+  //         data: {
+  //           customerInfo: {
+  //             username: customer.pppoe.username,
+  //             accountId: customer.accountId,
+  //             name: `${customer.firstName} ${customer.lastName}`,
+  //             package: customer.subscription?.packageId?.packageName || "N/A",
+  //           },
+  //           routerInfo: {
+  //             routerIp: expectedNasIp,
+  //             siteName: customer.siteId?.siteName || "Unknown",
+  //           },
+  //           status: "offline",
+  //           connectionInfo: {
+  //             reason: "Router Unreachable",
+  //             ipAddress: null,
+  //             macAddress: customer.cpe?.macAddress || null,
+  //             uptime: null,
+  //             uptimeSeconds: 0,
+  //             offlineSince: offlineSince.toISOString(),
+  //             offlineDuration,
+  //             lastSeen: lastSeen.toISOString(),
+  //             routerBrand: customer.cpe?.model || null,
+  //           },
+  //         },
+  //       });
+  //     }
+  //   }
+  // }
+
+  // Get active RADIUS session (online/offline)
+  let sessionStatus;
+  
+  sessionStatus = await radiusService.getUserConnectionStatus(
     customer.pppoe.username,
-    expectedNasIp,
+    expectedNasIp
   );
-  if (!statusResult.success) {
-    return next(
-      new ErrorResponse(`RADIUS query failed: ${statusResult.error}`, 500),
+  if (!sessionStatus.success) {
+    return next(new ErrorResponse(`RADIUS query failed: ${sessionStatus.error}`, 500));
+  }
+
+  if(customer.accountId !== customer.pppoe.username && !sessionStatus.isOnline && !sessionStatus.isOnlineNoInternet){
+    sessionStatus = await radiusService.getUserConnectionStatus(
+      customer.accountId,
+      expectedNasIp
     );
+   
   }
 
-  let routerBrand = null;
-  if (statusResult.callingMac) {
-    routerBrand = await getMacVendor(statusResult.callingMac);
-  } else if (customer.cpe?.macAddress) {
-    routerBrand = await getMacVendor(customer.cpe.macAddress);
-  }
 
-  // Helper to determine status by IP address
-// Helper to determine status by IP address
-const getStatusFromIp = (ipAddress) => {
-  if (!ipAddress) return 'offline';
-  const ipParts = ipAddress.split('.').map(Number);
-  if (ipParts.length !== 4) return 'offline';
 
-  // Expired pool: 10.254.254.0/24
-  if (ipParts[0] === 10 && ipParts[1] === 254 && ipParts[2] === 254) {
-    return 'expired';
-  }
-  // Wrong password pool: 20.20.0.0/16
-  if (ipParts[0] === 20 && ipParts[1] === 20) {
-    return 'wrong-password';
-  }
-  // Non-existent user pool: 30.30.0.0/16
-  if (ipParts[0] === 30 && ipParts[1] === 30) {
-    return 'non-existent';
-  }
-  // MAC mismatch pool: 40.40.0.0/16
-  if (ipParts[0] === 40 && ipParts[1] === 40) {
-    return 'mac-mismatch';
-  }
 
-  // Any other IP (including 10.10.x.x or any normal pool) means online
-  return 'online';
-};
 
-  const statusType = getStatusFromIp(statusResult.ipAddress);
 
-  // Update customer connectionStatus object (still useful for caching)
-  if (!customer.connectionStatus) customer.connectionStatus = {};
-  customer.connectionStatus.lastChecked = now;
-  customer.connectionStatus.currentIp = statusResult.ipAddress || null;
-  customer.connectionStatus.currentMac = customer.cpe?.macAddress || null;
-  customer.connectionStatus.currentNasIp = statusResult.nasIpAddress || null;
+  // Get latest authentication log
+  const authLog = await getLatestAuthResult(customer.pppoe.username);
+// After checking sessionStatus and authLog
+let routerBrand = null;
+let macToLookup = null;
 
-  let responseData = {
+// Prefer the MAC from the active session, otherwise fallback to stored CPE MAC
+if (sessionStatus.callingMac) {
+  macToLookup = sessionStatus.callingMac;
+} else if (customer.cpe?.macAddress) {
+  macToLookup = customer.cpe.macAddress;
+}
+
+if (macToLookup) {
+  routerBrand = await getMacVendor(macToLookup);
+}
+
+// Update customer connectionStatus cache
+if (!customer.connectionStatus) customer.connectionStatus = {};
+customer.connectionStatus.lastChecked = now;
+customer.connectionStatus.currentIp = sessionStatus.ipAddress || null;
+customer.connectionStatus.currentMac = customer.cpe?.macAddress || null;
+customer.connectionStatus.currentNasIp = sessionStatus.nasIpAddress || null;  // fixed placement
+
+  // Base response data (same structure)
+  const responseData = {
     customerInfo: {
       username: customer.pppoe.username,
       accountId: customer.accountId,
@@ -2249,170 +2710,130 @@ const getStatusFromIp = (ipAddress) => {
       siteName: customer.siteId?.siteName || "Unknown",
     },
   };
+  const alreadyBindedMac = customer.cpe?.macAddress || "";
 
-  if (statusType === "online") {
-    // Fully online – update customer record with current online time
-    customer.connectionStatus.status = "online";
-    customer.connectionStatus.lastOnline = now;
-    
-    // Save the NAS IP if present
-    if (statusResult.nasIpAddress && customer.nasIp !== statusResult.nasIpAddress) {
-      customer.pppoe.siteIp = statusResult.nasIpAddress;
-      customer.nasIp = statusResult.nasIpAddress;
-      await customer.save({ validateBeforeSave: false });
-    }
-    
-    if (customer.connectionStatus.noInternetSince) {
-      customer.connectionStatus.noInternetSince = null;
-    }
+  // CASE 1: Active session exists
+  if (sessionStatus.isOnline || sessionStatus.isOnlineNoInternet) {
+    const hasActiveSession = true;
+    const ipAddress = sessionStatus.ipAddress;
+    const startTime = sessionStatus.startTime;
+    const sessionTime = sessionStatus.sessionTime;
+    const callingMac = sessionStatus.callingMac;
+    const nasIpAddress = sessionStatus.nasIpAddress;
    
-    if (customer.cpe.macAddress !== statusResult.callingMac) {
-      customer.cpe.macAddress = statusResult.callingMac;
-      try {
-        const connection = await radiusService.getConnection();
-  
-        // Delete old MAC binding
-        await connection.query(
-          `DELETE FROM radcheck WHERE username = ? AND attribute = 'Calling-Station-Id'`,
-          [customer.pppoe.username],
-        );
-  
-        // Insert new MAC binding
-        await connection.query(
-          `INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Calling-Station-Id', '==', ?)`,
-          [customer.pppoe.username, statusResult.callingMac.toUpperCase()],
-        );
-  
-        connection.release();
-        console.log("✅ RADIUS MAC address updated");
-      } catch (radiusError) {
-        console.error("⚠️ RADIUS MAC update failed:", radiusError.message);
-      }
-    }
 
-    await customer.save({ validateBeforeSave: false });
+   
 
-    responseData.status = "online";
-    responseData.connectionInfo = {
-      ipAddress: statusResult.ipAddress,
-      macAddress: statusResult.callingMac || customer.cpe?.macAddress || null,
-      uptime: formatDuration(statusResult.sessionTime),
-      uptimeSeconds: statusResult.sessionTime,
-      onlineSince: statusResult.startTime?.toISOString() || now.toISOString(),
-      lastSeen: now.toISOString(),
-      nasIpAddress: statusResult.nasIpAddress,
-      routerBrand,
-    };
-    return res.status(200).json({ success: true, data: responseData });
-  }
-
-  // Cases: expired, wrong-password, non-existent, mac-mismatch (online but no internet)
-  if (
-    statusType === "expired" ||
-    statusType === "wrong-password" ||
-    statusType === "non-existent" ||
-    statusType === "mac-mismatch"
-  ) {
-    customer.connectionStatus.status = "online-no-internet";
-    if (!customer.connectionStatus.noInternetSince) {
-      customer.connectionStatus.noInternetSince = now;
-    }
-    if (!customer.connectionStatus.lastOnline) {
-      customer.connectionStatus.lastOnline = statusResult.startTime || now;
-    }
-    await customer.save({ validateBeforeSave: false });
-
+    // Determine issue from auth_log (if available)
+    let finalStatus = "online-no-internet";
     let reason = "";
     let authFailure = null;
-    
-    if (statusType === "expired") {
-      reason = "Account disabled";
-      // No auth failure needed for disabled accounts
-    } else if (statusType === "wrong-password") {
-      reason = "Wrong password";
-      const authAttempt = await getLatestAuthAttempt(customer.pppoe.username, 'wrong_password');
-      if (authAttempt) {
-        authFailure = {
-          attemptedPassword: authAttempt.attemptedPassword,
-          timestamp: authAttempt.timestamp,
-          message: "Wrong password used",
-        };
+
+    if (authLog && authLog.authResult) {
+      switch (authLog.authResult) {
+        case "correct":
+          finalStatus = "online";
+          reason = "";
+          break;
+        case "disabled":
+          finalStatus = "online-no-internet";
+          reason = "Account disabled";
+          break;
+        case "wrong_password":
+          finalStatus = "online-no-internet";
+          reason = "Wrong password";
+          authFailure = {
+            attemptedPassword: authLog.attemptedPassword,
+            timestamp: authLog.timestamp,
+            message: "Wrong password used",
+          };
+          break;
+        case "mac_mismatch":
+          finalStatus = "online-no-internet";
+          reason = "MAC address mismatch";
+          break;
+        case "no_user":
+          finalStatus = "online-no-internet";
+          reason = "User does not exist";
+          authFailure = {
+            attemptedPassword: authLog.attemptedPassword,
+            timestamp: authLog.timestamp,
+            message: "User does not exist in RADIUS",
+          };
+          break;
+        default:
+          finalStatus = "online-no-internet";
+          reason = "Unknown authentication issue";
       }
-    } else if (statusType === "non-existent") {
-      reason = "User does not exist";
-      const authAttempt = await getLatestAuthAttempt(customer.pppoe.username, 'no_user');
-      if (authAttempt) {
-        authFailure = {
-          attemptedPassword: authAttempt.attemptedPassword,
-          timestamp: authAttempt.timestamp,
-          message: "User does not exist in RADIUS",
-        };
-      }
-    } else if (statusType === "mac-mismatch") {
-      reason = "MAC address mismatch";
-      // MAC info is already in connectionInfo
+    } else {
+      // No auth log – fallback to session status
+      if (sessionStatus.isOnline) finalStatus = "online";
+      else finalStatus = "online-no-internet";
     }
 
-    responseData.status = "online-no-internet";
+    // Update customer status in database
+    if (finalStatus === "online") {
+      customer.connectionStatus.status = "online";
+      customer.connectionStatus.lastOnline = now;
+      if (customer.connectionStatus.noInternetSince) customer.connectionStatus.noInternetSince = null;
+    } else {
+      customer.connectionStatus.status = "online-no-internet";
+      if (!customer.connectionStatus.noInternetSince) customer.connectionStatus.noInternetSince = now;
+      if (!customer.connectionStatus.lastOnline) customer.connectionStatus.lastOnline = startTime || now;
+    }
+
+    // Save NAS IP if changed
+    if (nasIpAddress && customer.nasIp !== nasIpAddress) {
+      customer.pppoe.siteIp = nasIpAddress;
+      customer.nasIp = nasIpAddress;
+      await customer.save({ validateBeforeSave: false });
+    }
+
+    // Update MAC binding if needed
+    
+
+    await customer.save({ validateBeforeSave: false });
+
+    responseData.status = finalStatus;
     responseData.connectionInfo = {
-      ipAddress: statusResult.ipAddress,
-      macAddress: statusResult.callingMac || customer.cpe?.macAddress || null,
-      uptime: formatDuration(statusResult.sessionTime),
-      uptimeSeconds: statusResult.sessionTime,
-      onlineSince: statusResult.startTime?.toISOString() || now.toISOString(),
+      ipAddress,
+      macAddress: callingMac || customer.cpe?.macAddress || null,
+      uptime: formatDuration(sessionTime),
+      uptimeSeconds: sessionTime,
+      onlineSince: startTime?.toISOString() || now.toISOString(),
       lastSeen: now.toISOString(),
-      noInternetSince: customer.connectionStatus.noInternetSince.toISOString(),
-      reason,
+      nasIpAddress,
       routerBrand,
-      nasIpAddress: statusResult.nasIpAddress,
+      alreadyBindedMac,
     };
-    
-    if (authFailure) {
-      responseData.authFailure = authFailure;
-    }
-    
-    if (statusResult.isOnDifferentNas) {
-      responseData.connectionInfo.warning = `Active session on different router (${statusResult.nasIpAddress})`;
-      responseData.connectionInfo.currentRouterIp = expectedNasIp;
-      responseData.connectionInfo.sessionRouterIp = statusResult.nasIpAddress;
-    }
-    
+    if (reason) responseData.connectionInfo.reason = reason;
+    if (authFailure) responseData.authFailure = authFailure;
+
     return res.status(200).json({ success: true, data: responseData });
   }
 
-  // Offline – no active session. Use RADIUS history for last seen.
+  // CASE 2: No active session – offline
   const lastEndTime = await getLastSessionEndTime(customer.pppoe.username);
   const lastSeen = lastEndTime || customer.createdAt;
-  let offlineSince = lastSeen; // the moment the last session ended
-  let offlineDuration = null;
-  if (offlineSince) {
-    const offlineMs = Date.now() - new Date(offlineSince).getTime();
-    offlineDuration = formatDuration(Math.floor(offlineMs / 1000));
-  }
+  const offlineSince = lastSeen;
+  const offlineMs = Date.now() - new Date(offlineSince).getTime();
+  const offlineDuration = formatDuration(Math.floor(offlineMs / 1000));
 
   customer.connectionStatus.status = "offline";
-  if (
-    !customer.connectionStatus.lastOffline &&
-    customer.connectionStatus.lastOnline
-  ) {
+  if (!customer.connectionStatus.lastOffline && customer.connectionStatus.lastOnline) {
     customer.connectionStatus.lastOffline = now;
   }
-  if (customer.connectionStatus.noInternetSince) {
-    customer.connectionStatus.noInternetSince = null;
-  }
-  
-  // Also update customer's lastOnline to the last known session end time for future fallback
+  if (customer.connectionStatus.noInternetSince) customer.connectionStatus.noInternetSince = null;
   customer.connectionStatus.lastOnline = lastSeen;
   await customer.save({ validateBeforeSave: false });
 
-  // Check if there was a recent auth failure while offline
-  const recentAuthAttempt = await getLatestAuthAttempt(customer.pppoe.username);
+  // Check for recent auth failure while offline
   let offlineAuthFailure = null;
-  if (recentAuthAttempt && recentAuthAttempt.authResult !== 'correct') {
+  if (authLog && authLog.authResult !== "correct") {
     offlineAuthFailure = {
-      attemptedPassword: recentAuthAttempt.attemptedPassword,
-      timestamp: recentAuthAttempt.timestamp,
-      message: `Last auth attempt failed: ${recentAuthAttempt.authResult}`,
+      attemptedPassword: authLog.attemptedPassword,
+      timestamp: authLog.timestamp,
+      message: `Last auth attempt failed: ${authLog.authResult}`,
     };
   }
 
@@ -2426,33 +2847,15 @@ const getStatusFromIp = (ipAddress) => {
     offlineDuration,
     lastSeen: lastSeen.toISOString(),
     routerBrand,
-    registeredAt: customer.createdAt
+    registeredAt: customer.createdAt,
+    alreadyBindedMac,
   };
-  
-  if (offlineAuthFailure) {
-    responseData.authFailure = offlineAuthFailure;
-  }
-  
+  if (offlineAuthFailure) responseData.authFailure = offlineAuthFailure;
+
   return res.status(200).json({ success: true, data: responseData });
 });
 
 
-/**
- * @desc    Reset customer MAC address (when ONU is replaced)
- * @route   POST /api/customers/:id/reset-mac
- * @access  Private
- *
- * When a customer's ONU/router is replaced:
- * 1. Keep WiFi name and password
- * 2. Update serial number, MAC address, and model
- * 3. Fetch new info from active PPPoE session
- * 4. Log the change
- */
-/**
- * @desc    Reset customer MAC address (when ONU is replaced)
- * @route   POST /api/customers/:id/reset-mac
- * @access  Private
- */
 /**
  * @desc    Reset customer MAC address (when ONU is replaced)
  * @route   POST /api/customers/:id/reset-mac
@@ -2750,7 +3153,7 @@ exports.clearCustomerMac = asyncHandler(async (req, res, next) => {
   const result = await radiusService.clearMacBinding(customer.pppoe.username);
 
   if (!result.success) {
-    return next(
+    return next( 
       new ErrorResponse(`Failed to clear MAC binding: ${result.error}`, 500),
     );
   }
@@ -2790,26 +3193,26 @@ exports.clearCustomerMac = asyncHandler(async (req, res, next) => {
  * @route   POST /api/customers/:parentId/children
  * @access  Private
  */
+/**
+ * @desc    Create child account under an existing customer (with sharing options)
+ * @route   POST /api/customers/:parentId/children
+ * @access  Private
+ */
 exports.createChildAccount = asyncHandler(async (req, res, next) => {
   const { parentId } = req.params;
 
   // 1. Find parent
   const parent = await Customer.findById(parentId);
   if (!parent) return next(new ErrorResponse("Parent customer not found", 404));
-  if (parent.isChild)
-    return next(
-      new ErrorResponse("Cannot create child under another child", 400),
-    );
+  if (parent.isChild) return next(new ErrorResponse("Cannot create child under another child", 400));
 
-  // 2. Extract child-specific fields
+  // 2. Extract child-specific fields, including sharing flags
   const {
     packageId,
     siteId,
-    // Location fields (top‑level)
     city,
     subLocation,
     localArea,
-    // Override fields
     siteMacAddress,
     clientMacAddress,
     wifiName,
@@ -2817,7 +3220,8 @@ exports.createChildAccount = asyncHandler(async (req, res, next) => {
     model,
     serialNumber,
     notes,
-    // Optional overrides for personal info
+    sharePackage = false,
+    shareExpiry = false,
     firstName: overrideFirstName,
     lastName: overrideLastName,
     email: overrideEmail,
@@ -2826,82 +3230,79 @@ exports.createChildAccount = asyncHandler(async (req, res, next) => {
     location: overrideLocation,
   } = req.body;
 
-  // Validate mandatory fields (including location)
-  if (
-    !packageId ||
-    !siteId ||
-    !city ||
-    !subLocation ||
-    !localArea ||
-    !clientMacAddress ||
-    !wifiName ||
-    !wifiPassword ||
-    !model ||
-    !serialNumber
-  ) {
-    return next(
-      new ErrorResponse(
-        "Missing required fields: packageId, siteId, city, subLocation, localArea, clientMacAddress, wifiName, wifiPassword, model, serialNumber",
-        400,
-      ),
-    );
+  // Validate mandatory fields (location + CPE)
+  if (!siteId || !city || !subLocation || !localArea || !clientMacAddress || !wifiName || !wifiPassword || !model || !serialNumber) {
+    return next(new ErrorResponse("Missing required fields: siteId, city, subLocation, localArea, clientMacAddress, wifiName, wifiPassword, model, serialNumber", 400));
   }
 
-  // 3. Resolve package and site
-  const Package = require("../models/Package");
-  const packageDoc = await Package.findById(packageId);
-  if (!packageDoc) return next(new ErrorResponse("Package not found", 404));
+  // If NOT sharing package, packageId must be provided
+  if (!sharePackage && !packageId) {
+    return next(new ErrorResponse("Package ID is required when not sharing parent's package", 400));
+  }
 
+  // Resolve site
   const site = await Site.findById(siteId);
   if (!site) return next(new ErrorResponse("Site not found", 404));
 
-  if (packageDoc.siteId.toString() !== siteId) {
-    return next(new ErrorResponse("Package does not belong to this site", 400));
-  }
-  if (packageDoc.packageType !== "ppp") {
-    return next(new ErrorResponse("Only PPPoE packages allowed", 400));
+  // Determine effective package
+  let effectivePackageId;
+  if (sharePackage) {
+    effectivePackageId = parent.subscription.packageId;
+    if (!effectivePackageId) return next(new ErrorResponse("Parent has no package to share", 400));
+  } else {
+    const pkg = await Package.findById(packageId);
+    if (!pkg) return next(new ErrorResponse("Package not found", 404));
+    if (pkg.siteId.toString() !== siteId) return next(new ErrorResponse("Package does not belong to this site", 400));
+    if (pkg.packageType !== "ppp") return next(new ErrorResponse("Only PPPoE packages allowed", 400));
+    effectivePackageId = pkg._id;
   }
 
-  // 4. Inherit or override personal info
+  // Inherit or override personal info
   const firstName = overrideFirstName || parent.firstName;
   const lastName = overrideLastName || parent.lastName;
   const email = overrideEmail || parent.email;
-  const phoneNumber = overridePhone
-    ? formatPhoneNumber(overridePhone)
-    : parent.phoneNumber;
-  const alternatePhoneNumber = overrideAltPhone
-    ? formatPhoneNumber(overrideAltPhone)
-    : parent.alternatePhoneNumber;
-  const location = overrideLocation
-    ? { ...parent.location, ...overrideLocation }
-    : parent.location;
+  const phoneNumber = overridePhone ? formatPhoneNumber(overridePhone) : parent.phoneNumber;
+  const alternatePhoneNumber = overrideAltPhone ? formatPhoneNumber(overrideAltPhone) : parent.alternatePhoneNumber;
+  const location = overrideLocation ? { ...parent.location, ...overrideLocation } : parent.location;
 
-  // 5. Generate child account ID based on parent
-  const childCount = await Customer.countDocuments({
-    parentAccount: parent._id,
-  });
-  const suffix = (childCount + 1).toString().padStart(2, "0");
-  const finalAccountId = `${parent.accountId}-${suffix}`;
-  const pppoePassword = generatePPPoEPassword();
+  // Generate child account ID
+// Get all children's accountIds
+const children = await Customer.find(
+  { parentAccount: parent._id },
+  { accountId: 1 }   // only fetch accountId for efficiency
+);
 
-  // 6. Set subscription as expired (not active)
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() - 1000); // expired 1 second ago
+let highestSuffix = 0;
+for (const child of children) {
+  const parts = child.accountId.split('-');
+  if (parts.length === 2) {
+    const num = parseInt(parts[1], 10);
+    if (!isNaN(num) && num > highestSuffix) {
+      highestSuffix = num;
+    }
+  }
+}
 
-  // 7. Get primary router for the site (for siteIp)
-  // let primaryRouter;
-  // try {
-  //   primaryRouter = await getPrimaryRouterForSite(siteId);
-  // } catch (routerError) {
-  //   return next(
-  //     new ErrorResponse(
-  //       `Cannot create child account: ${routerError.message}`,
-  //       500,
-  //     ),
-  //   );
-  // }
+const nextSuffix = highestSuffix + 1;
+const suffix = nextSuffix.toString().padStart(2, '0');
+const finalAccountId = `${parent.accountId}-${suffix}`;
+const pppoePassword = generatePPPoEPassword();
 
-  // 8. Create child in database
+  // Set expiry based on sharing flag
+  let expiresAt;
+  let subStatus = 'expired';
+
+  if (shareExpiry) {
+    console.log("They are sharing expiry with parent.")
+    expiresAt = parent.subscription.expiresAt; // same as parent
+    if(parent.subscription.status !== 'expired' ){
+      subStatus = 'active';
+    }
+  } else {
+    expiresAt = new Date(Date.now() - 1000);
+  }
+
+  // Create child document
   const child = await Customer.create({
     accountId: finalAccountId,
     regionCode: site.regionCode,
@@ -2918,7 +3319,6 @@ exports.createChildAccount = asyncHandler(async (req, res, next) => {
     pppoe: {
       username: finalAccountId,
       password: pppoePassword,
-
       macAddress: siteMacAddress || null,
     },
     cpe: {
@@ -2929,31 +3329,43 @@ exports.createChildAccount = asyncHandler(async (req, res, next) => {
       wifiPassword,
     },
     subscription: {
-      packageId,
-      status: "expired",
+      packageId: effectivePackageId,
+      status: subStatus, // always start expired – activation requires payment or parent's active status later
       activatedAt: null,
       expiresAt,
       autoRenew: true,
     },
-    billing: {
-      balance: 0,
-    },
+    billing: { balance: 0 },
     isChild: true,
     parentAccount: parent._id,
+    shared: {
+      expiryWithParent: shareExpiry,
+      packageWithParent: sharePackage,
+    },
     createdBy: req.session.userId,
   });
 
   // Add note if provided
   if (notes) {
-    child.notes.push({
-      note: notes,
-      addedBy: req.session.userId,
-      addedAt: now,
-    });
+    child.notes.push({ note: notes, addedBy: req.session.userId, addedAt: new Date() });
     await child.save();
   }
 
-  // 9. Update site coverage (non‑critical)
+  // Update parent's shared arrays
+  if (shareExpiry) {
+    await Customer.updateOne(
+      { _id: parent._id },
+      { $addToSet: { sharedExpiry: child._id } }
+    );
+  }
+  if (sharePackage) {
+    await Customer.updateOne(
+      { _id: parent._id },
+      { $addToSet: { sharedPackage: child._id } }
+    );
+  }
+
+  // Update site coverage (non-critical)
   try {
     await site.addCityIfNotExists(child.city);
     await site.addSubLocationIfNotExists(child.city, child.subLocation);
@@ -2962,29 +3374,27 @@ exports.createChildAccount = asyncHandler(async (req, res, next) => {
     console.warn(`Site coverage update failed for ${child.accountId}:`, err.message);
   }
 
-  // 10. Create RADIUS account (disabled initially)
+  // Create RADIUS account (disabled initially)
   let radiusMessage = "";
   try {
+    const packageDoc = await Package.findById(effectivePackageId);
     const radiusService = require("../services/radiusService");
     const radiusResult = await radiusService.createAccount(child, packageDoc);
-    if (!radiusResult.success) {
-      throw new Error(radiusResult.error);
+    if (!radiusResult.success) throw new Error(radiusResult.error);
+    if(subStatus === 'expired'){
+      await radiusService.disableAccount(child.pppoe.username);
+    }else{
+      const groupName = packageDoc.packageName.replace(/\s+/g, "_").toUpperCase();
+      await radiusService.enableAccount(child.pppoe.username, groupName);
     }
-    // Immediately disable the account (since child is expired)
-    const disableResult = await radiusService.disableAccount(child.pppoe.username);
-    if (!disableResult.success) {
-      console.warn("Could not disable RADIUS account:", disableResult.error);
-      radiusMessage = "RADIUS account created but could not be disabled.";
-    } else {
-      radiusMessage = "RADIUS account created and disabled (child is inactive).";
-    }
+    
+    radiusMessage = "RADIUS account created and disabled.";
   } catch (error) {
     console.error("RADIUS account creation failed for child:", error.message);
     radiusMessage = `RADIUS account creation failed: ${error.message}`;
-    // Don't fail the whole creation; child is still saved, but log error.
   }
 
-  // 11. Log creation
+  // Log creation
   await SystemLog.create({
     eventType: "child_account_created",
     severity: "info",
@@ -2996,6 +3406,8 @@ exports.createChildAccount = asyncHandler(async (req, res, next) => {
     details: {
       parentId: parent._id,
       childId: child._id,
+      sharePackage,
+      shareExpiry,
       radius: radiusMessage,
     },
     triggeredBy: req.session.userId,
@@ -3009,27 +3421,208 @@ exports.createChildAccount = asyncHandler(async (req, res, next) => {
   });
 });
 
+
+/**
+ * @desc    Update child account (including sharing toggles)
+ * @route   PUT /api/customers/child/:id
+ * @access  Private
+ */
+exports.updateChildAccount = asyncHandler(async (req, res, next) => {
+  const child = await Customer.findById(req.params.id).populate('subscription.packageId');
+  if (!child) return next(new ErrorResponse("Child account not found", 404));
+  if (!child.isChild) return next(new ErrorResponse("This is not a child account", 400));
+
+  const parent = await Customer.findById(child.parentAccount);
+  if (!parent) return next(new ErrorResponse("Parent account not found", 400));
+
+  // Region access check
+  if (req.regionFilter?.regionCode && child.regionCode !== req.regionFilter.regionCode) {
+    return next(new ErrorResponse("Access denied", 403));
+  }
+
+  const {
+    sharePackage,
+    shareExpiry,
+    packageId,            // only used if sharePackage becomes false
+    city, subLocation, localArea,
+    clientMacAddress, wifiName, wifiPassword, model, serialNumber,
+    phoneNumber,           // optional override
+    notes,
+    firstName,
+    lastName,
+    alternatePhoneNumber,
+  } = req.body;
+
+  // Update sharing flags
+  const oldSharePackage = child.shared?.packageWithParent || false;
+  const oldShareExpiry = child.shared?.expiryWithParent || false;
+
+  if(alternatePhoneNumber){
+    child.alternatePhoneNumber = alternatePhoneNumber;
+  }
+
+  if (firstName && firstName !== child.firstName) {
+    
+    child.firstName = firstName;
+  }
+
+  if (lastName && lastName !== child.lastName) {
+   
+    child.lastName = lastName;
+  }
+
+  if (sharePackage !== undefined && sharePackage !== oldSharePackage) {
+    child.shared.packageWithParent = sharePackage;
+    if (sharePackage) {
+      // Start sharing: use parent's package
+      child.subscription.packageId = parent.subscription.packageId;
+      // Add child to parent's sharedPackage array
+      await Customer.updateOne(
+        { _id: parent._id },
+        { $addToSet: { sharedPackage: child._id } }
+      );
+    } else {
+      // Stop sharing: need to assign a specific package
+      if (!packageId) return next(new ErrorResponse("Package ID required when unsharing package", 400));
+      const pkg = await Package.findById(packageId);
+      if (!pkg) return next(new ErrorResponse("Package not found", 404));
+      if (pkg.siteId.toString() !== child.siteId.toString()) {
+        return next(new ErrorResponse("Package does not belong to child's site", 400));
+      }
+      child.subscription.packageId = pkg._id;
+      // Remove child from parent's sharedPackage array
+      await Customer.updateOne(
+        { _id: parent._id },
+        { $pull: { sharedPackage: child._id } }
+      );
+    }
+  }
+
+  if (shareExpiry !== undefined && shareExpiry !== oldShareExpiry) {
+    child.shared.expiryWithParent = shareExpiry;
+    if (shareExpiry) {
+      const radiusService = require("../services/radiusService");
+      if(child.subscription.status !== parent.subscription.status){
+        child.subscription.status = parent.subscription.status;
+        if(parent.subscription.status === "active"){
+          const groupName = child.subscription.packageId.packageName.replace(/\s+/g, '_').toUpperCase();          
+          await radiusService.enableAccount(child.pppoe.username, groupName);
+        }else{
+          console.log("Parent was disabled, disabling child");
+          
+          await radiusService.disableAccount(child.pppoe.username);
+        }
+        
+      }
+      child.subscription.expiresAt = parent.subscription.expiresAt;
+      
+      await Customer.updateOne(
+        { _id: parent._id },
+        { $addToSet: { sharedExpiry: child._id } }
+      );
+
+      
+    } else {
+      // Stop sharing expiry – set a default (e.g., expired)
+      child.subscription.expiresAt = new Date(Date.now() - 1000);
+      await Customer.updateOne(
+        { _id: parent._id },
+        { $pull: { sharedExpiry: child._id } }
+      );
+    }
+  }
+
+  // Location updates
+  if (city) child.city = city;
+  if (subLocation) child.subLocation = subLocation;
+  if (localArea) child.localArea = localArea;
+
+  // CPE updates
+  if (clientMacAddress) child.cpe.macAddress = clientMacAddress;
+  if (wifiName) child.cpe.wifiName = wifiName;
+  if (wifiPassword) child.cpe.wifiPassword = wifiPassword;
+  if (model) child.cpe.model = model;
+  if (serialNumber) child.cpe.serialNumber = serialNumber;
+
+  // Phone override
+  if (phoneNumber) child.phoneNumber = formatPhoneNumber(phoneNumber);
+
+  if (notes) {
+    child.notes.push({ note: notes, addedBy: req.session.userId, addedAt: new Date() });
+  }
+
+  await child.save();
+
+  // If package changed (including unsharing), update RADIUS group
+  if ((sharePackage !== undefined && sharePackage !== oldSharePackage) ||
+      (!sharePackage && packageId)) {
+    const groupName = child.subscription.packageId.packageName.replace(/\s+/g, '_').toUpperCase();
+    const radiusService = require("../services/radiusService");
+    await radiusService.updateBandwidth(child.pppoe.username, child.subscription.packageId.speed.upload, child.subscription.packageId.speed.download, groupName);
+  }
+
+  // If expiry sharing changed or parent's expiry changed later will be handled via separate sync
+
+  res.status(200).json({ success: true, data: child });
+});
+
 /**
  * @desc    Get child accounts of a parent
+ * @route   GET /api/customers/:parentId/children
+ * @access  Private
+ */
+/**
+ * @desc    Get child accounts of a parent (with live connection status)
  * @route   GET /api/customers/:parentId/children
  * @access  Private
  */
 exports.getChildren = asyncHandler(async (req, res, next) => {
   const { parentId } = req.params;
 
-  // Check parent exists and user has access to parent (region filter applied on parent route)
   const parent = await Customer.findById(parentId);
   if (!parent) return next(new ErrorResponse("Parent not found", 404));
 
-  // No region restriction for children – we return all children regardless of region
+  // Get all children (no region restriction)
   const children = await Customer.find({ parentAccount: parentId })
     .populate("subscription.packageId", "packageName")
     .populate("siteId", "siteName")
-    .select("-pppoe.password -cpe.wifiPassword");
+    .select("-pppoe.password -cpe.wifiPassword")
+    .lean();
+
+  if (children.length === 0) {
+    return res.status(200).json({ success: true, data: [] });
+  }
+
+  // Get usernames for RADIUS status check
+  const usernames = children.map(c => c.pppoe?.username).filter(Boolean);
+  const expectedNasIpMap = {};
+  for (const child of children) {
+    if (child.pppoe?.siteIp) {
+      expectedNasIpMap[child.pppoe.username] = child.pppoe.siteIp;
+    }
+  }
+
+  const radiusService = require("../services/radiusService");
+  let statuses = {};
+  if (usernames.length > 0) {
+    statuses = await radiusService.getBulkUserConnectionStatus(usernames, expectedNasIpMap);
+  }
+
+  // Enrich children with connectivity
+  const enriched = children.map(child => {
+    const username = child.pppoe?.username;
+    const radiusStatus = statuses[username];
+    const isOnline = radiusStatus?.isOnline || false;
+    const connectivity = isOnline ? "online" : "offline";
+    return {
+      ...child,
+      connectivity
+    };
+  });
 
   res.status(200).json({
     success: true,
-    data: children,
+    data: enriched,
   });
 });
 
@@ -3177,7 +3770,7 @@ exports.calculateExpiryMove = asyncHandler(async (req, res, next) => {
   const dailyRate = calculateDailyRate(packageDoc);
   const daysToAdd = Math.ceil((target - currentExpiry) / (1000 * 60 * 60 * 24));
   const proratedAmount = dailyRate * daysToAdd;
-  const convenienceFee = 1;
+  const convenienceFee = 200;
   const total = Math.ceil(proratedAmount + convenienceFee);
   const balance = customer.billing?.balance || 0;
   const hasEnoughBalance = balance >= total;
@@ -3214,6 +3807,11 @@ exports.moveExpiry = asyncHandler(async (req, res, next) => {
   );
   if (!customer) return next(new ErrorResponse("Customer not found", 404));
 
+  if (customer.isChild && customer.shared.expiryWithParent) {
+    return next(new ErrorResponse('This is a child account and shares expiry with parent.', 400));
+  }
+
+
 
   const oldStatus = customer.subscription.status;
 
@@ -3229,6 +3827,7 @@ exports.moveExpiry = asyncHandler(async (req, res, next) => {
 
   const currentExpiry = new Date(customer.subscription.expiresAt);
   const target = new Date(targetDate);
+  // target.setHours(target.getHours() - 3);
   if (isNaN(target.getTime()))
     return next(new ErrorResponse("Invalid target date", 400));
   if (target <= currentExpiry) {
@@ -3241,7 +3840,7 @@ exports.moveExpiry = asyncHandler(async (req, res, next) => {
   const dailyRate = calculateDailyRate(packageDoc);
   const daysToAdd = Math.ceil((target - currentExpiry) / (1000 * 60 * 60 * 24));
   const proratedAmount = Math.ceil(dailyRate * daysToAdd);
-  const convenienceFee = 1;
+  const convenienceFee = 200;
   const total = proratedAmount + convenienceFee;
   const balance = customer.billing?.balance || 0;
 
@@ -3263,9 +3862,37 @@ exports.moveExpiry = asyncHandler(async (req, res, next) => {
   });
   await customer.save();
 
+  // Propagate to children that share expiry
+if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+  await propagateToChildren(customer, { newExpiry: customer.subscription.expiresAt, radiusAction: 'enable' });
+}
+
+  const transaction = await Transaction.create({
+    type: "PRORATED_MOVE",
+    customerType: "pppoe", // or could be hotspot, but we handle generically
+    customerId: customer._id,
+    accountId: customer.accountId,
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    regionCode: customer.regionCode,
+    siteId: customer.siteId,
+    amount: `-${total}`,  // negative
+    description: `Expiry date prorated`,
+    paymentMethod: "wallet", 
+    status: "completed",
+    metadata: {
+      
+      category: "Expiry date prorated",
+      deductedBy: req.session.userId,
+    },
+  });
+
+  await transaction.save();
+
+
   const timeOnly = `${target.getHours().toString().padStart(2, "0")}:${target.getMinutes().toString().padStart(2, "0")}`;
   const mobileSasaService = require("../services/mobileSasaService");
-  const smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your subscription expiry date has been moved to ${target.toDateString()} at ${timeOnly}. This date will apply for al the following months as long as you pay for your following month's subscription before the current expires. Thankyou.`;
+  const smsMessage = `Dear ${customer.firstName} ${customer.lastName}, your subscription expiry date has been moved to ${target.toDateString()} at ${timeOnly}.  Thankyou.`;
 
   const smsResult = await mobileSasaService.sendSingle(
     customer.phoneNumber,
@@ -3529,23 +4156,21 @@ exports.overrideExpiry = asyncHandler(async (req, res, next) => {
 
   const customer = await Customer.findById(id).populate('subscription.packageId');
   if (!customer) return next(new ErrorResponse('Customer not found', 404));
+  if (customer.subscription.status === 'suspended') return next(new ErrorResponse('Subscription paused, first resume it.', 400));
+
+  if(customer.isChild && customer.shared.expiryWithParent){
+    return next(new ErrorResponse('This is a child and shares expiry with parent, you can only override from parent.', 400))
+  }
 
   const oldExpiry = customer.subscription.expiresAt;
 
   // Parse the input date string and set time to 12:00:00 UTC
   let newExpiry = new Date(newExpiryDate);
+  // newExpiry.setHours(newExpiry.getHours() - 3);
   if (isNaN(newExpiry.getTime())) return next(new ErrorResponse('Invalid date', 400));
 
-  // Set to noon UTC (12:00:00.000) – consistent across all clients
-  newExpiry = new Date(Date.UTC(
-    newExpiry.getUTCFullYear(),
-    newExpiry.getUTCMonth(),
-    newExpiry.getUTCDate(),
-    12, 0, 0, 0
-  ));
-
   const now = new Date();
-  const wasActive = customer.subscription.status === 'active';
+  const wasActive = customer.subscription.status === 'active' ;
   const willBeActive = newExpiry > now;
 
   // Update MongoDB expiry first
@@ -3572,9 +4197,20 @@ exports.overrideExpiry = asyncHandler(async (req, res, next) => {
     }
   } else if (!willBeActive && wasActive) {
     // Deactivate: disable RADIUS account
+    const customerPackage = await Package.findById(customer.subscription.packageId);
+
+    if(customerPackage){
+      const hasBalance = customer.billing.balance >= customerPackage.price;
+
+      if(hasBalance){
+        customer.waitingForSession = true;
+        
+      }
+    }
     customer.subscription.status = 'expired';
     console.log(`🔄 [overrideExpiry] Deactivating ${customer.accountId} -> disable RADIUS`);
     const radResult = await radiusService.disableAccount(customer.pppoe.username);
+    await radiusService.addPendingActivation(customer.pppoe.username); 
     if (!radResult.success) {
       console.error(`❌ RADIUS disable failed: ${radResult.error}`);
     } else {
@@ -3583,6 +4219,16 @@ exports.overrideExpiry = asyncHandler(async (req, res, next) => {
     }
   } else {
     // No status change
+    const customerPackage = await Package.findById(customer.subscription.packageId);
+
+    if(customerPackage){
+      const hasBalance = customer.billing.balance >= customerPackage.price;
+
+      if(hasBalance){
+        customer.waitingForSession = true;
+        await customer.save();
+      }
+    }
     console.log(`ℹ️ [overrideExpiry] No status change for ${customer.accountId}; expiry updated only.`);
   }
 
@@ -3594,6 +4240,15 @@ exports.overrideExpiry = asyncHandler(async (req, res, next) => {
 
   // Save MongoDB changes
   await customer.save();
+
+  // Propagate to children
+if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+  await propagateToChildren(customer, {
+    newExpiry: customer.subscription.expiresAt,
+    newStatus: customer.subscription.status,
+    radiusAction: customer.subscription.status === 'active' ? 'enable' : 'disable'
+  });
+}
 
   // If RADIUS state changed, kill the active session to force re-authentication
   if (disconnectNeeded) {
@@ -3641,7 +4296,9 @@ exports.extendExpiry = asyncHandler(async (req, res, next) => {
   const customer = await Customer.findById(id).populate('subscription.packageId');
   if (!customer) return next(new ErrorResponse('Customer not found', 404));
 
-
+  if (customer.isChild && customer.shared?.expiryWithParent) {
+    return next(new ErrorResponse("Cannot extend expiry on a child account that shares expiry with parent.", 400));
+  }
 
   const oldStatus = customer.subscription.status;
 
@@ -3668,6 +4325,13 @@ exports.extendExpiry = asyncHandler(async (req, res, next) => {
     baseExpiry = now;
   }
   const newExpiry = new Date(baseExpiry.getTime() + days * 24 * 60 * 60 * 1000);
+  if(newExpiry <= customer.subscription.expiresAt){
+    return next(new ErrorResponse('Extension date must be after current expiry date', 400));
+
+  }
+
+
+
   customer.subscription.expiresAt = newExpiry;
 
   // If the customer was expired, reactivate
@@ -3687,6 +4351,15 @@ exports.extendExpiry = asyncHandler(async (req, res, next) => {
   });
 
   await customer.save();
+
+  // Propagate to children
+if (customer.sharedExpiry && customer.sharedExpiry.length > 0) {
+  await propagateToChildren(customer, {
+    newExpiry: customer.subscription.expiresAt,
+    newStatus: customer.subscription.status,
+    radiusAction: customer.subscription.status === 'active' ? 'enable' : 'disable'
+  });
+}
 
   // RADIUS update if status changed
   const radiusService = require('../services/radiusService');
@@ -3879,7 +4552,7 @@ exports.addExpense = asyncHandler(async (req, res, next) => {
     siteId: customer.siteId,
     amount: -amount,  // negative
     description: `${category ? category.toUpperCase() : "EXPENSE"}: ${reason}`,
-    paymentMethod: "cash", // or "wallet_debit"
+    paymentMethod: "wallet", 
     status: "completed",
     metadata: {
       reason,
@@ -3928,7 +4601,23 @@ exports.addExpense = asyncHandler(async (req, res, next) => {
   });
 });
 
-
+exports.getSyncJobStatus = asyncHandler(async (req, res, next) => {  // ← add 'next'
+  const job = await RadiusSyncJob.findById(req.params.jobId);
+  if (!job) return next(new ErrorResponse('Job not found', 404));
+  res.json({
+    success: true,
+    data: {
+      status: job.status,
+      total: job.total,
+      processed: job.processed,
+      created: job.created,
+      updatedGroup: job.updatedGroup,
+      disabled: job.disabled,
+      errors: job.errors.slice(0, 100),
+      finishedAt: job.finishedAt
+    }
+  });
+});
 
 /**
  * @desc    Sync customers to RADIUS (create missing, update groups, disable expired)
@@ -3938,157 +4627,37 @@ exports.addExpense = asyncHandler(async (req, res, next) => {
  */
 exports.syncCustomersToRadius = asyncHandler(async (req, res, next) => {
   const { dryRun = false, regionCode, fixGroups = true } = req.body;
-  
-  // Build region filter (admin may have region restriction)
+
+  // Build query to count customers (don't load them all yet)
   let query = {};
-  if (regionCode) {
-    query.regionCode = regionCode;
-  } else if (req.regionFilter?.regionCode) {
-    query.regionCode = req.regionFilter.regionCode;
-  }
-  // If super admin and no regionCode, sync all
+  if (regionCode) query.regionCode = regionCode;
+  else if (req.regionFilter?.regionCode) query.regionCode = req.regionFilter.regionCode;
 
-  const customers = await Customer.find(query)
-    .populate('subscription.packageId')
-    .populate('siteId');
-  
-  const radiusService = require('../services/radiusService');
-  const results = {
-    total: customers.length,
-    processed: 0,
-    created: 0,
-    updatedGroup: 0,
-    disabled: 0,
-    errors: [],
-    details: []
-  };
-
-  for (const customer of customers) {
-    try {
-      const username = customer.pppoe?.username;
-      if (!username) {
-        results.errors.push({ accountId: customer.accountId, error: 'No PPPoE username' });
-        continue;
-      }
-
-      // Determine desired group and enabled status
-      const packageDoc = customer.subscription?.packageId;
-      const isActive = customer.subscription?.status === 'active' && 
-                       new Date(customer.subscription.expiresAt) > new Date();
-      let desiredGroup = null;
-      let desiredEnabled = false;
-
-      if (isActive && packageDoc) {
-        desiredGroup = packageDoc.packageName.replace(/\s+/g, '_').toUpperCase();
-        desiredEnabled = true;
-      } else {
-        desiredGroup = 'DISABLED';
-        desiredEnabled = false;
-      }
-
-      // Get current RADIUS state
-      let radiusUserExists = false;
-      let currentGroup = null;
-      let conn;
-      try {
-        conn = await radiusService.getConnection();
-        const [userCheck] = await conn.query(
-          'SELECT 1 FROM radcheck WHERE username = ? AND attribute = "Cleartext-Password" LIMIT 1',
-          [username]
-        );
-        radiusUserExists = userCheck.length > 0;
-
-        if (radiusUserExists) {
-          const [groupRows] = await conn.query(
-            'SELECT groupname FROM radusergroup WHERE username = ? ORDER BY priority LIMIT 1',
-            [username]
-          );
-          currentGroup = groupRows[0]?.groupname || null;
-        }
-      } finally {
-        if (conn) conn.release();
-      }
-
-      // If user doesn't exist in RADIUS, create full account
-      if (!radiusUserExists) {
-        if (!dryRun) {
-          const createResult = await radiusService.createAccount(customer, packageDoc);
-          if (!createResult.success) {
-            results.errors.push({ accountId: customer.accountId, error: `Create failed: ${createResult.error}` });
-            continue;
-          }
-          // If desired group is DISABLED, disable after creation
-          if (!desiredEnabled) {
-            await radiusService.disableAccount(username);
-          }
-          results.created++;
-          results.details.push({ accountId: customer.accountId, action: 'created', group: desiredGroup });
-        } else {
-          results.details.push({ accountId: customer.accountId, action: 'would create', group: desiredGroup });
-        }
-        results.processed++;
-        continue;
-      }
-
-      // User exists – check group mismatch
-      if (fixGroups && currentGroup !== desiredGroup) {
-        if (!dryRun) {
-          if (desiredEnabled) {
-            await radiusService.enableAccount(username, desiredGroup);
-          } else {
-            await radiusService.disableAccount(username);
-          }
-          results.updatedGroup++;
-          results.details.push({ accountId: customer.accountId, action: 'group updated', from: currentGroup, to: desiredGroup });
-        } else {
-          results.details.push({ accountId: customer.accountId, action: 'would update group', from: currentGroup, to: desiredGroup });
-        }
-        results.processed++;
-        continue;
-      }
-
-      // Also handle FUP attribute (Max-Monthly-Traffic) if package changes
-      if (desiredEnabled && packageDoc && packageDoc.fup?.enabled) {
-        const quotaBytes = packageDoc.fup.dataThresholdGB * 1024 * 1024 * 1024;
-        if (!dryRun) {
-          await radiusService.enableFUPForCustomer(username, quotaBytes);
-        }
-      } else if (desiredEnabled && packageDoc && !packageDoc.fup?.enabled) {
-        // Remove FUP if package no longer supports it
-        if (!dryRun) {
-          await radiusService.disableFUPForCustomer(username);
-        }
-      }
-
-      // If we reach here, no changes needed
-      results.details.push({ accountId: customer.accountId, action: 'already synced', group: currentGroup });
-      results.processed++;
-
-    } catch (err) {
-      console.error(`Sync error for ${customer.accountId}:`, err);
-      results.errors.push({ accountId: customer.accountId, error: err.message });
-    }
+  const total = await Customer.countDocuments(query);
+  if (total === 0) {
+    return res.status(200).json({ success: true, message: 'No customers to sync', data: { total: 0 } });
   }
 
-  // Log system event
-  await SystemLog.create({
-    eventType: 'radius_sync',
-    severity: 'info',
+  // Create a job record
+  const job = await RadiusSyncJob.create({
+    status: 'pending',
+    total,
+    dryRun,
     regionCode: regionCode || req.regionFilter?.regionCode || 'all',
-    entityType: 'system',
-    message: `RADIUS sync completed: ${results.processed} processed, ${results.created} created, ${results.updatedGroup} updated, ${results.disabled} disabled`,
-    details: results,
+    fixGroups,
     triggeredBy: req.session.userId,
-    success: true
   });
 
-  res.status(200).json({
+  // Start background processing (non-blocking)
+  const { processSyncJobInBackground } = require("../services/radiusSyncWorker");
+  processSyncJobInBackground(job._id, query, { dryRun, fixGroups });
+
+  res.status(202).json({
     success: true,
-    message: `Sync completed (dryRun: ${dryRun})`,
-    data: results
+    message: 'Sync job started. Use /api/radius-sync/jobs/:jobId to check status.',
+    data: { jobId: job._id, total }
   });
 });
-
 
 // @desc    Bulk import customers from JSON (preserve all fields)
 // @route   POST /api/customers/bulk-import
@@ -4113,7 +4682,7 @@ exports.bulkImportCustomers = asyncHandler(async (req, res, next) => {
     let errorMsg = null;
 
     try {
-      // 1. Required fields - adapt to JSON structure
+      // 1. Required fields
       const requiredFields = {
         accountId: raw.accountId,
         firstName: raw.firstName,
@@ -4129,9 +4698,7 @@ exports.bulkImportCustomers = asyncHandler(async (req, res, next) => {
       };
       
       for (const [field, value] of Object.entries(requiredFields)) {
-        if (!value) {
-          throw new Error(`Missing required field: ${field}`);
-        }
+        if (!value) throw new Error(`Missing required field: ${field}`);
       }
 
       const packageId = raw.subscription.packageId;
@@ -4158,36 +4725,62 @@ exports.bulkImportCustomers = asyncHandler(async (req, res, next) => {
         throw new Error(`Package ${packageId} is not PPPoE type`);
       }
 
-      // 5. Account ID uniqueness
+      // 5. Detect if this is a child account (accountId contains a hyphen)
+      const isChild = raw.isChild || (raw.accountId && raw.accountId.includes('-'));
+      let parentAccountId = null;
+      let parentCustomer = null;
+
+      if (isChild) {
+        // Extract parent account ID: everything before the last hyphen
+        const lastHyphenIndex = raw.accountId.lastIndexOf('-');
+        if (lastHyphenIndex === -1) {
+          throw new Error(`Child account ${raw.accountId} must contain a hyphen (e.g., SKN1234-01)`);
+        }
+        parentAccountId = raw.accountId.substring(0, lastHyphenIndex);
+        parentCustomer = await Customer.findOne({ accountId: parentAccountId, isChild: false });
+        if (!parentCustomer) {
+          throw new Error(`Parent account ${parentAccountId} not found for child ${raw.accountId}`);
+        }
+        // Inherit region and site from parent if not explicitly provided (optional but safe)
+        if (!raw.regionCode) raw.regionCode = parentCustomer.regionCode;
+        if (!raw.siteId) raw.siteId = parentCustomer.siteId.toString();
+        // For child accounts, phone number does NOT have to be unique (skip all checks)
+      }
+
+      // 6. Account ID uniqueness (check across both primary and child, but child IDs are unique by definition)
       const existingByAccount = await Customer.findOne({ accountId: raw.accountId });
       if (existingByAccount) {
         throw new Error(`Account ID ${raw.accountId} already exists`);
       }
 
-      // 6. Phone number uniqueness within region
+      // 7. Phone number uniqueness – only for primary accounts
       const formattedPhone = formatPhoneNumber(raw.phoneNumber);
-      const existingPhone = await Customer.findOne({
-        phoneNumber: formattedPhone,
-        regionCode: site.regionCode,
-      });
-      if (existingPhone) {
-        throw new Error(`Phone number ${formattedPhone} already exists in region ${site.regionCode}`);
-      }
-
-      // 7. Alternate phone if present
-      let formattedAlt = null;
-      if (raw.alternatePhoneNumber) {
-        formattedAlt = formatPhoneNumber(raw.alternatePhoneNumber);
-        const existingAlt = await Customer.findOne({
-          phoneNumber: formattedAlt,
+      if (!isChild) {
+        const existingPhone = await Customer.findOne({
+          phoneNumber: formattedPhone,
           regionCode: site.regionCode,
+          isChild: false
         });
-        if (existingAlt) {
-          throw new Error(`Alternate phone ${formattedAlt} already registered`);
+        if (existingPhone) {
+          throw new Error(`Phone number ${formattedPhone} already exists in region ${site.regionCode}`);
+        }
+
+        // Alternate phone if present
+        let formattedAlt = null;
+        if (raw.alternatePhoneNumber) {
+          formattedAlt = formatPhoneNumber(raw.alternatePhoneNumber);
+          const existingAlt = await Customer.findOne({
+            phoneNumber: formattedAlt,
+            regionCode: site.regionCode,
+            isChild: false
+          });
+          if (existingAlt) {
+            throw new Error(`Alternate phone ${formattedAlt} already registered in region ${site.regionCode}`);
+          }
         }
       }
 
-      // 8. Prepare customer data – using the nested structure
+      // 8. Prepare customer data
       const now = new Date();
       const customerData = {
         accountId: raw.accountId,
@@ -4197,12 +4790,13 @@ exports.bulkImportCustomers = asyncHandler(async (req, res, next) => {
         lastName: raw.lastName,
         email: raw.email || '',
         phoneNumber: formattedPhone,
-        alternatePhoneNumber: formattedAlt,
+        alternatePhoneNumber: raw.alternatePhoneNumber ? formatPhoneNumber(raw.alternatePhoneNumber) : undefined,
         city: raw.city,
         subLocation: raw.subLocation,
         localArea: raw.localArea,
         location: raw.location || {},
-        isChild: raw.isChild || false,
+        isChild: isChild,
+        parentAccount: isChild ? parentCustomer._id : undefined,
         pppoe: {
           username: raw.pppoe.username,
           password: raw.pppoe.password,
@@ -4251,7 +4845,9 @@ exports.bulkImportCustomers = asyncHandler(async (req, res, next) => {
         notes: [
           ...(raw.notes || []),
           {
-            note: `Imported via bulk upload from JSON`,
+            note: isChild 
+              ? `Imported child account via bulk upload from JSON (parent: ${parentAccountId})`
+              : `Imported via bulk upload from JSON`,
             addedBy: req.user?._id || req.session.userId,
             createdAt: now,
           },
@@ -4272,7 +4868,8 @@ exports.bulkImportCustomers = asyncHandler(async (req, res, next) => {
         console.warn(`Site coverage update failed for ${customer.accountId}:`, err.message);
       }
 
-      // 10. Create RADIUS account
+      // 10. Create RADIUS account (for primary accounts only? Child accounts may also need RADIUS)
+      //    Even child accounts need PPPoE credentials, so we always create.
       const radiusResult = await radiusService.createAccount(customer, packageDoc);
       if (!radiusResult.success) {
         console.error(`RADIUS creation failed for ${customer.accountId}: ${radiusResult.error}`);
@@ -4294,7 +4891,7 @@ exports.bulkImportCustomers = asyncHandler(async (req, res, next) => {
         entityType: 'customer',
         entityId: customer._id,
         accountId: customer.accountId,
-        message: `Bulk import: customer ${customer.accountId} created (preserved original data)`,
+        message: `Bulk import: ${isChild ? 'child' : 'primary'} customer ${customer.accountId} created${isChild ? ` (parent: ${parentAccountId})` : ''}`,
         triggeredBy: req.user?._id || req.session.userId,
         success: true,
       });
@@ -4369,14 +4966,18 @@ exports.getTicketsByCustomer = asyncHandler(async (req, res, next) => {
  * @access  Private (Admin only)
  * @body    { dryRun?: boolean, fixGroups?: boolean }
  */
+// ─── SIMPLIFIED SYNC TO RADIUS ───────────────────────────────────────────────
+// POST /api/customers/:id/sync-radius
+// Body: none (or optional, but we ignore)
+// ------------------------------------------------------------------------------
 exports.syncSingleCustomerToRadius = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const { dryRun = false, fixGroups = true } = req.body;
 
-  const customer = await Customer.findById(id).populate('subscription.packageId').populate('siteId');
+  // 1. Find customer with package details
+  const customer = await Customer.findById(id).populate('subscription.packageId');
   if (!customer) return next(new ErrorResponse('Customer not found', 404));
 
-  // Region access check
+  // Region access check (if you have region filtering)
   if (req.regionFilter?.regionCode && customer.regionCode !== req.regionFilter.regionCode) {
     return next(new ErrorResponse('Access denied to this customer', 403));
   }
@@ -4386,137 +4987,32 @@ exports.syncSingleCustomerToRadius = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('No PPPoE username found for this customer', 400));
   }
 
+  // 2. Determine if account should be active
+  const now = new Date();
+  const sub = customer.subscription;
+  const isActive = sub?.status === 'active' && sub?.expiresAt && new Date(sub.expiresAt) > now;
+
+  // 3. Get the group name (if active)
+  let groupName = null;
+  if (isActive && sub?.packageId) {
+    // Convert package name to RADIUS group name (uppercase, underscores)
+    groupName = sub.packageId.packageName.replace(/\s+/g, '_').toUpperCase();
+  }
+
+  // 4. Call the appropriate RADIUS method
   const radiusService = require('../services/radiusService');
-  const result = {
-    username,
-    accountId: customer.accountId,
-    dryRun,
-    actions: [],
-    errors: []
-  };
+  let result;
 
-  try {
-    // Determine desired group and enabled status
-    const packageDoc = customer.subscription?.packageId;
-    const isActive = customer.subscription?.status === 'active' && 
-                     new Date(customer.subscription.expiresAt) > new Date();
-    let desiredGroup = null;
-    let desiredEnabled = false;
+  if (isActive && groupName) {
+    // Enable account – this will remove DISABLED and set the correct group
+    result = await radiusService.enableAccount(username, groupName);
+  } else {
+    // Disable account – this will set DISABLED (priority 10) while preserving the original group
+    result = await radiusService.disableAccount(username);
+  }
 
-    if (isActive && packageDoc) {
-      desiredGroup = packageDoc.packageName.replace(/\s+/g, '_').toUpperCase();
-      desiredEnabled = true;
-    } else {
-      desiredGroup = 'DISABLED';
-      desiredEnabled = false;
-    }
-
-    // Get current RADIUS state
-    let radiusUserExists = false;
-    let currentGroup = null;
-    let conn;
-    try {
-      conn = await radiusService.getConnection();
-      const [userCheck] = await conn.query(
-        'SELECT 1 FROM radcheck WHERE username = ? AND attribute = "Cleartext-Password" LIMIT 1',
-        [username]
-      );
-      radiusUserExists = userCheck.length > 0;
-
-      if (radiusUserExists) {
-        const [groupRows] = await conn.query(
-          'SELECT groupname FROM radusergroup WHERE username = ? ORDER BY priority LIMIT 1',
-          [username]
-        );
-        currentGroup = groupRows[0]?.groupname || null;
-      }
-    } finally {
-      if (conn) conn.release();
-    }
-
-    // If user doesn't exist in RADIUS, create full account
-    if (!radiusUserExists) {
-      if (!dryRun) {
-        const createResult = await radiusService.createAccount(customer, packageDoc);
-        if (!createResult.success) {
-          throw new Error(`Create failed: ${createResult.error}`);
-        }
-        // If desired group is DISABLED, disable after creation
-        if (!desiredEnabled) {
-          await radiusService.disableAccount(username);
-        }
-        result.actions.push('created RADIUS account');
-      } else {
-        result.actions.push('would create RADIUS account');
-      }
-    } 
-    // User exists – check group mismatch
-    else if (fixGroups && currentGroup !== desiredGroup) {
-      if (!dryRun) {
-        if (desiredEnabled) {
-          await radiusService.enableAccount(username, desiredGroup);
-          result.actions.push(`group updated from ${currentGroup} to ${desiredGroup} (enabled)`);
-        } else {
-          await radiusService.disableAccount(username);
-          result.actions.push(`group updated from ${currentGroup} to DISABLED (disabled)`);
-        }
-      } else {
-        result.actions.push(`would update group from ${currentGroup} to ${desiredGroup}`);
-      }
-    }
-
-    // Handle FUP attribute (Max-Monthly-Traffic) if package changes
-    if (desiredEnabled && packageDoc && packageDoc.fup?.enabled) {
-      const quotaBytes = packageDoc.fup.dataThresholdGB * 1024 * 1024 * 1024;
-      if (!dryRun) {
-        await radiusService.enableFUPForCustomer(username, quotaBytes);
-        result.actions.push(`FUP enabled (${packageDoc.fup.dataThresholdGB}GB threshold)`);
-      } else {
-        result.actions.push('would enable FUP');
-      }
-    } else if (desiredEnabled && packageDoc && !packageDoc.fup?.enabled) {
-      if (!dryRun) {
-        await radiusService.disableFUPForCustomer(username);
-        result.actions.push('FUP disabled (package does not support FUP)');
-      } else {
-        result.actions.push('would disable FUP');
-      }
-    }
-
-    if (result.actions.length === 0) {
-      result.actions.push('already in sync, no changes needed');
-    }
-
-    // Log the sync
-    await SystemLog.create({
-      eventType: 'radius_sync_single',
-      severity: 'info',
-      regionCode: customer.regionCode,
-      entityType: 'customer',
-      entityId: customer._id,
-      accountId: customer.accountId,
-      message: `Single customer RADIUS sync ${dryRun ? '(dry run) ' : ''}completed: ${result.actions.join(', ')}`,
-      details: result,
-      triggeredBy: req.session.userId,
-      success: true
-    });
-
-    customer.notes.push({
-      note: `Customer account radius details re-synced.`,
-      addedBy: req.user?._id || req.customerId || "system",
-      addedAt: new Date(),
-    });
-
-    res.status(200).json({
-      success: true,
-      message: dryRun ? 'Dry run completed. No changes applied.' : 'Customer synced to RADIUS successfully.',
-      data: result
-    });
-
-  } catch (error) {
-    console.error(`Sync error for ${customer.accountId}:`, error);
-    result.errors.push(error.message);
-
+  if (!result.success) {
+    // Log error and return
     await SystemLog.create({
       eventType: 'radius_sync_single',
       severity: 'error',
@@ -4524,13 +5020,519 @@ exports.syncSingleCustomerToRadius = asyncHandler(async (req, res, next) => {
       entityType: 'customer',
       entityId: customer._id,
       accountId: customer.accountId,
-      message: `Single customer RADIUS sync failed: ${error.message}`,
-      details: result,
-      triggeredBy: req.session.userId,
-      success: false
+      message: `RADIUS sync failed for ${username}: ${result.error || 'Unknown error'}`,
+      success: false,
     });
-
-    return next(new ErrorResponse(`Sync failed: ${error.message}`, 500));
+    return next(new ErrorResponse(`RADIUS sync failed: ${result.error || 'Unknown error'}`, 500));
   }
+
+  // 5. Log success
+  await SystemLog.create({
+    eventType: 'radius_sync_single',
+    severity: 'info',
+    regionCode: customer.regionCode,
+    entityType: 'customer',
+    entityId: customer._id,
+    accountId: customer.accountId,
+    message: `RADIUS sync completed: ${username} → ${isActive ? 'ENABLED' : 'DISABLED'}`,
+    success: true,
+  });
+
+  // 6. Optionally add a note to the customer
+  customer.notes.push({
+    note: `RADIUS account ${isActive ? 'enabled' : 'disabled'} via sync.`,
+    addedBy: req.user?._id || 'system',
+    addedAt: new Date(),
+  });
+  await customer.save();
+
+  res.status(200).json({
+    success: true,
+    message: `Customer ${username} ${isActive ? 'enabled' : 'disabled'} in RADIUS.`,
+    data: {
+      username,
+      status: isActive ? 'active' : 'inactive',
+      groupName: isActive ? groupName : 'DISABLED',
+    },
+  });
 });
 
+
+// @desc    Add a retention/customer care record
+// @route   POST /api/customers/:id/retention
+// @access  Private (Admin only)
+exports.addRetentionRecord = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const customer = await Customer.findById(id);
+  if (!customer) return next(new ErrorResponse('Customer not found', 404));
+
+  // Region access check
+  if (req.regionFilter?.regionCode && customer.regionCode !== req.regionFilter.regionCode) {
+    return next(new ErrorResponse('Access denied', 403));
+  }
+
+  // Extract retention data from request body
+  const {
+    callDate,
+    callStatus,
+    failureReason,
+    callType,
+    serviceSatisfaction,
+    retentionOutcome,
+    routerCollection,
+    description,
+    accountAction,
+    actionDate,
+  } = req.body;
+
+  // Build retention object
+  const retentionData = {
+    callDate: callDate || new Date(),
+    calledBy: req.user?._id || req.session?.userId,
+    callStatus,
+  };
+
+  // Add conditional fields based on callStatus and callType
+  if (callStatus === 'failed') {
+    if (!failureReason) return next(new ErrorResponse('failureReason is required when callStatus is "failed"', 400));
+    retentionData.failureReason = failureReason;
+    // description is optional for failed calls
+    if (description) retentionData.description = description;
+  } else if (callStatus === 'successful') {
+    if (!callType) return next(new ErrorResponse('callType is required when callStatus is "successful"', 400));
+    retentionData.callType = callType;
+    if (!description) return next(new ErrorResponse('description is required for successful calls', 400));
+    retentionData.description = description;
+
+    if (callType === 'service_follow_up') {
+      if (!serviceSatisfaction) return next(new ErrorResponse('serviceSatisfaction required for service_follow_up', 400));
+      retentionData.serviceSatisfaction = serviceSatisfaction;
+    } else if (callType === 'retention') {
+      if (!retentionOutcome) return next(new ErrorResponse('retentionOutcome required for retention call', 400));
+      retentionData.retentionOutcome = retentionOutcome;
+
+      if (retentionOutcome === 'changed_provider') {
+        if (!routerCollection || !routerCollection.status) {
+          return next(new ErrorResponse('routerCollection.status required when retentionOutcome is "changed_provider"', 400));
+        }
+        retentionData.routerCollection = {
+          status: routerCollection.status,
+          scheduledDate: routerCollection.scheduledDate,
+          collectedDate: routerCollection.collectedDate,
+          collectedBy: routerCollection.collectedBy,
+        };
+      }
+    } else {
+      return next(new ErrorResponse('Invalid callType', 400));
+    }
+  } else {
+    return next(new ErrorResponse('callStatus must be "successful" or "failed"', 400));
+  }
+
+  // Account action (optional)
+  if (accountAction && accountAction !== 'none') {
+    if (!actionDate) return next(new ErrorResponse('actionDate required when accountAction is specified', 400));
+    retentionData.accountAction = accountAction;
+    retentionData.actionDate = actionDate;
+  } else {
+    retentionData.accountAction = 'none';
+  }
+
+  // Push to customer's retention array
+  customer.retention.push(retentionData);
+  await customer.save();
+
+  // System log
+  await SystemLog.create({
+    eventType: 'retention_record',
+    severity: 'info',
+    regionCode: customer.regionCode,
+    entityType: 'customer',
+    entityId: customer._id,
+    accountId: customer.accountId,
+    message: `Retention record added for ${customer.accountId}`,
+    details: { callStatus, callType, retentionOutcome, accountAction },
+    triggeredBy: req.user?._id || req.session?.userId,
+    success: true,
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Retention record added successfully',
+    data: customer.retention[customer.retention.length - 1],
+  });
+});
+
+
+// @desc    Get customer retention records
+// @route   GET /api/customers/:id/retention
+// @access  Private
+exports.getCustomerRetention = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { page = 1, limit = 20 } = req.query;
+  const customer = await Customer.findById(id).select('retention regionCode accountId');
+  if (!customer) return next(new ErrorResponse('Customer not found', 404));
+
+  // Region access check
+  if (req.regionFilter?.regionCode && customer.regionCode !== req.regionFilter.regionCode) {
+    return next(new ErrorResponse('Access denied', 403));
+  }
+
+  // Paginate retention array (reverse chronological)
+  const retention = customer.retention || [];
+  const sorted = [...retention].sort((a, b) => new Date(b.callDate) - new Date(a.callDate));
+  const start = (parseInt(page) - 1) * parseInt(limit);
+  const end = start + parseInt(limit);
+  const paginated = sorted.slice(start, end);
+
+  // Populate calledBy names (if needed)
+  const Admin = require('../models/Admin');
+  const User = require('../models/User');
+  const userIds = paginated.map(r => r.calledBy).filter(id => id);
+  const admins = await Admin.find({ _id: { $in: userIds } }).select('firstName lastName');
+  const users = await User.find({ _id: { $in: userIds } }).select('firstName lastName');
+  const nameMap = new Map();
+  admins.forEach(a => nameMap.set(a._id.toString(), `${a.firstName} ${a.lastName}`));
+  users.forEach(u => nameMap.set(u._id.toString(), `${u.firstName} ${u.lastName}`));
+
+  const enriched = paginated.map(r => ({
+    ...r.toObject(),
+    calledByName: nameMap.get(r.calledBy?.toString()) || 'Unknown',
+  }));
+
+  res.status(200).json({
+    success: true,
+    data: {
+      records: enriched,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: retention.length,
+        pages: Math.ceil(retention.length / parseInt(limit)),
+      },
+    },
+  });
+});
+
+
+
+/**
+ * @desc    Sync RADIUS accounts for customers where accountId != pppoe.username
+ *          Creates/updates a RADIUS user named accountId that mirrors the pppoe.username user.
+ * @route   POST /api/customers/sync-mismatched-usernames
+ * @access  Private (Admin only)
+ * @body    { dryRun?: boolean, regionCode?: string }
+ */
+exports.syncMismatchedUsernames = asyncHandler(async (req, res, next) => {
+  const { dryRun = false, regionCode } = req.body;
+
+  // Build region filter
+  let query = {};
+  if (regionCode) {
+    query.regionCode = regionCode;
+  } else if (req.regionFilter?.regionCode) {
+    query.regionCode = req.regionFilter.regionCode;
+  }
+
+  // Find customers where accountId is NOT equal to pppoe.username
+  // Also ensure both fields exist and are strings
+  const customers = await Customer.find(query)
+    .populate('subscription.packageId')
+    .populate('siteId')
+    .lean();
+
+  const mismatched = customers.filter(c =>
+    c.accountId && c.pppoe?.username &&
+    c.accountId !== c.pppoe.username
+  );
+
+  console.log(`[syncMismatchedUsernames] Found ${mismatched.length} mismatched customers`);
+
+  const radiusService = require('../services/radiusService');
+  const results = {
+    totalFound: mismatched.length,
+    processed: 0,
+    created: 0,
+    updated: 0,
+    errors: [],
+    details: []
+  };
+
+  for (const customer of mismatched) {
+    const oldUsername = customer.pppoe.username;
+    const newUsername = customer.accountId;
+
+    try {
+      // Get existing RADIUS data for the pppoe.username
+      const connection = await radiusService.getConnection();
+
+      // 1. Password
+      const [passwordRows] = await connection.query(
+        `SELECT value FROM radcheck WHERE username = ? AND attribute = 'Cleartext-Password'`,
+        [oldUsername]
+      );
+      if (passwordRows.length === 0) {
+        results.errors.push({
+          accountId: customer.accountId,
+          error: `No Cleartext-Password for ${oldUsername}`
+        });
+        connection.release();
+        continue;
+      }
+      const password = passwordRows[0].value;
+
+      // 2. MAC binding
+      const [macRows] = await connection.query(
+        `SELECT value FROM radcheck WHERE username = ? AND attribute = 'Calling-Station-Id'`,
+        [oldUsername]
+      );
+      const macAddress = macRows.length ? macRows[0].value : null;
+
+      // 3. FUP (Max-Monthly-Traffic)
+      const [fupRows] = await connection.query(
+        `SELECT value FROM radcheck WHERE username = ? AND attribute = 'Max-Monthly-Traffic'`,
+        [oldUsername]
+      );
+      const fupQuota = fupRows.length ? fupRows[0].value : null;
+
+      // 4. Expiration
+      const [expiryRows] = await connection.query(
+        `SELECT value FROM radcheck WHERE username = ? AND attribute = 'Expiration'`,
+        [oldUsername]
+      );
+      const expiration = expiryRows.length ? expiryRows[0].value : null;
+
+      // 5. Group
+      const [groupRows] = await connection.query(
+        `SELECT groupname FROM radusergroup WHERE username = ? ORDER BY priority LIMIT 1`,
+        [oldUsername]
+      );
+      const groupName = groupRows.length ? groupRows[0].groupname : 'DISABLED';
+
+      // 6. Billing cycle start
+      const [cycleRows] = await connection.query(
+        `SELECT cycle_start FROM user_billing_cycle WHERE username = ?`,
+        [oldUsername]
+      );
+      const cycleStart = cycleRows.length ? cycleRows[0].cycle_start : null;
+
+      if (!dryRun) {
+        // Begin transaction
+        await connection.beginTransaction();
+
+        // Delete any existing entries for newUsername (to clean slate)
+        await connection.query(`DELETE FROM radcheck WHERE username = ?`, [newUsername]);
+        await connection.query(`DELETE FROM radusergroup WHERE username = ?`, [newUsername]);
+        await connection.query(`DELETE FROM radreply WHERE username = ?`, [newUsername]);
+        await connection.query(`DELETE FROM user_billing_cycle WHERE username = ?`, [newUsername]);
+
+        // Insert password
+        await connection.query(
+          `INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Cleartext-Password', ':=', ?)`,
+          [newUsername, password]
+        );
+
+        // Insert MAC binding if exists
+        if (macAddress) {
+          await connection.query(
+            `INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Calling-Station-Id', '==', ?)`,
+            [newUsername, macAddress]
+          );
+        }
+
+        // Insert FUP if exists
+        if (fupQuota) {
+          await connection.query(
+            `INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Max-Monthly-Traffic', ':=', ?)`,
+            [newUsername, fupQuota]
+          );
+        }
+
+        // Insert Expiration if exists
+        if (expiration) {
+          await connection.query(
+            `INSERT INTO radcheck (username, attribute, op, value) VALUES (?, 'Expiration', ':=', ?)`,
+            [newUsername, expiration]
+          );
+        }
+
+        // Insert group
+        await connection.query(
+          `INSERT INTO radusergroup (username, groupname, priority) VALUES (?, ?, 1)`,
+          [newUsername, groupName]
+        );
+
+        // Insert billing cycle start if exists
+        if (cycleStart) {
+          await connection.query(
+            `INSERT INTO user_billing_cycle (username, cycle_start) VALUES (?, ?)`,
+            [newUsername, cycleStart]
+          );
+        }
+
+        await connection.commit();
+        results.updated++;
+        results.details.push({
+          accountId: customer.accountId,
+          action: 'updated',
+          oldUsername,
+          newUsername
+        });
+      } else {
+        results.details.push({
+          accountId: customer.accountId,
+          action: 'would update',
+          oldUsername,
+          newUsername
+        });
+      }
+
+      connection.release();
+      results.processed++;
+
+    } catch (err) {
+      console.error(`Sync error for ${customer.accountId}:`, err);
+      results.errors.push({
+        accountId: customer.accountId,
+        error: err.message
+      });
+    }
+  }
+
+  // Log system event
+  await SystemLog.create({
+    eventType: 'radius_sync_mismatched',
+    severity: 'info',
+    regionCode: regionCode || req.regionFilter?.regionCode || 'all',
+    entityType: 'system',
+    message: `Mismatched username sync completed: ${results.processed} processed, ${results.updated} updated, ${results.created} created`,
+    details: results,
+    triggeredBy: req.session.userId,
+    success: true
+  });
+
+  res.status(200).json({
+    success: true,
+    message: dryRun ? 'Dry run completed' : 'Mismatched customers synced to RADIUS',
+    data: results
+  });
+});
+
+
+/**
+ * @desc    Get customer daily data usage for graph display
+ * @route   GET /api/customers/:id/data-usage
+ * @access  Private
+ * @query   days, dateFrom, dateTo
+ */
+exports.getCustomerDataUsage = asyncHandler(async (req, res, next) => {
+  const customer = await Customer.findById(req.params.id)
+    .select('firstName lastName accountId pppoe regionCode')
+    .lean();
+
+  if (!customer) return next(new ErrorResponse('Customer not found', 404));
+
+  // Region access check
+  if (req.regionFilter?.regionCode && customer.regionCode !== req.regionFilter.regionCode) {
+    return next(new ErrorResponse('Access denied', 403));
+  }
+
+  const username = customer.pppoe?.username;
+  if (!username) return next(new ErrorResponse('Customer has no PPPoE username', 400));
+
+  const { days, dateFrom, dateTo } = req.query;
+
+  const radiusService = require('../services/radiusService');
+  const result = await radiusService.getCustomerDailyUsage(username, {
+    days:     days     ? parseInt(days) : 30,
+    dateFrom: dateFrom || null,
+    dateTo:   dateTo   || null
+  });
+
+  if (!result.success) return next(new ErrorResponse(result.error, 500));
+
+  res.status(200).json({
+    success: true,
+    customer: {
+      id:        customer._id,
+      name:      `${customer.firstName} ${customer.lastName}`,
+      accountId: customer.accountId,
+      username
+    },
+    summary: result.summary,
+    data:    result.data
+  });
+});
+
+
+/**
+ * @desc    Add a note to a customer
+ * @route   POST /api/customers/:id/notes
+ * @access  Private
+ * @body    { note: string }
+ */
+exports.addCustomerNotes = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { note } = req.body;
+
+  // Validate note content
+  if (!note || !note.trim()) {
+    return next(new ErrorResponse("Note content is required", 400));
+  }
+
+  // Find the customer
+  const customer = await Customer.findById(id);
+  if (!customer) {
+    return next(new ErrorResponse("Customer not found", 404));
+  }
+
+  // Region access check
+  if (req.regionFilter?.regionCode && customer.regionCode !== req.regionFilter.regionCode) {
+    return next(new ErrorResponse("Access denied to this customer", 403));
+  }
+
+  // Push the note
+  customer.notes.push({
+    note: note.trim(),
+    addedBy: req.user?._id || req.session?.userId || "system",
+    addedAt: new Date(),
+  });
+
+  await customer.save();
+
+  res.status(201).json({
+    success: true,
+    message: "Note added successfully",
+    data: customer.notes,
+  });
+});
+
+
+// @desc    Get vouchers for a customer (by accountId in prefix)
+// @route   GET /api/customers/:id/vouchers
+// @access  Private
+exports.getCustomerVouchers = asyncHandler(async (req, res, next) => {
+  const customer = await Customer.findById(req.params.id);
+  if (!customer) return next(new ErrorResponse('Customer not found', 404));
+
+  // Region access check
+  if (req.regionFilter?.regionCode && customer.regionCode !== req.regionFilter.regionCode) {
+    return next(new ErrorResponse('Access denied to this customer', 403));
+  }
+
+  const accountId = customer.accountId;
+  // Match prefixes that end with '-{accountId}' exactly
+  const prefixRegex = new RegExp(`^[A-Z]{4}-${accountId}$`);
+
+  const vouchers = await Voucher.find({
+    prefix: { $regex: prefixRegex },
+    // Optionally, we can exclude those created before a certain date? No.
+  })
+    .populate('packageId', 'packageName')
+    .sort({ createdAt: -1 });
+
+  res.status(200).json({
+    success: true,
+    data: vouchers,
+  });
+});

@@ -1,0 +1,7 @@
+exec exec_send_disconnect {
+    wait = no
+    program = "/usr/local/bin/scripts/disconnect_hotspot.sh %{User-Name} %{NAS-IP-Address} %{Acct-Session-Id} %{NAS-Port}"
+    input_pairs = request
+    shell_escape = yes
+    timeout = 5
+}

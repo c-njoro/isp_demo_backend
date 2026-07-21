@@ -51,10 +51,12 @@ const onuSchema = new mongoose.Schema({
     index: true,
     validate: {
       validator: function(v) {
-        // Typical ONU serial format: SMBS12345678 (4 letters + 8 digits)
-        return /^[A-Z]{4}[0-9A-F]{8}$/i.test(v);
+        // Loosened from the strict Huawei/ZTE "4 letters + 8 hex" format
+        // to plain alphanumeric, 8-20 chars. Mixed fleets (Tenda, TP-Link,
+        // etc.) don't reliably follow the HWTC-style convention.
+        return /^[A-Z0-9]{8,20}$/i.test(v);
       },
-      message: 'Serial number must be in format: XXXX12345678 (4 letters + 8 hex digits)'
+      message: 'Serial number must be 8-20 alphanumeric characters'
     }
   },
   
@@ -93,7 +95,7 @@ const onuSchema = new mongoose.Schema({
   onuId: {
     type: Number,
     required: [true, 'ONU ID is required'],
-    min: [1, 'ONU ID must be at least 1'],
+    min: [0, 'ONU ID cannot be negative'],
     max: [256, 'ONU ID cannot exceed 256']
   },
   
@@ -167,6 +169,13 @@ const onuSchema = new mongoose.Schema({
     trim: true
   },
   
+  // OLT-side service-port index (VLAN mapping/GEM-port allocation) assigned
+  // during Skylink authorization — needed for troubleshooting/deprovisioning
+  // and to keep the self-healing counter loop in authorizeOnuSkylink honest.
+  servicePortIndex: {
+    type: Number
+  },
+  
   // ============================================
   // BANDWIDTH CONFIGURATION
   // ============================================
@@ -232,8 +241,28 @@ const onuSchema = new mongoose.Schema({
   
   authStatus: {
     type: String,
-    enum: ['authorized', 'unauthorized', 'pending'],
-    default: 'pending'
+    enum: ['pending_approval', 'authorized', 'rejected', 'unauthorized'],
+    default: 'pending_approval'
+    // pending_approval: discovered via autofind, awaiting admin decision (our default flow — no auto-authorize)
+    // authorized: admin approved, OLT write succeeded
+    // rejected: admin explicitly declined this discovered ONU
+    // unauthorized: kept for backward compat / OLT-reported deauthorized state
+  },
+
+  discoveredAt: {
+    type: Date,
+    default: Date.now
+    // when this serial first appeared via autofind on the OLT
+  },
+
+  rejectedAt: {
+    type: Date,
+    default: null
+  },
+
+  authorizedAt: {
+    type: Date,
+    default: null
   },
   
   isProvisioned: {

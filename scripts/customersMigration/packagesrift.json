@@ -1,0 +1,3674 @@
+[
+            {
+                "speed": {
+                    "download": 6,
+                    "upload": 6,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b4",
+                "packageName": "Unlimited for 14 days Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 800,
+                "period": 14,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b0",
+                "packageName": "5Mbps_1K Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c448100",
+                "packageName": "10Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1300,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 6,
+                    "upload": 6,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b5",
+                "packageName": "Unlimited for a Month Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1499,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ab",
+                "packageName": "5Mbps_1500 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e3",
+                "packageName": "Nam_Package Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 12,
+                    "upload": 12,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480fc",
+                "packageName": "12Mbps@1500 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480fe",
+                "packageName": "10Mbps@1500 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 18,
+                    "upload": 18,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c448101",
+                "packageName": "18Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 7,
+                    "upload": 7,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480fb",
+                "packageName": "7Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1650,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 4,
+                    "upload": 4,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b7",
+                "packageName": "4Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1750,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 8,
+                    "upload": 8,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d0",
+                "packageName": "8Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1800,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 8,
+                    "upload": 8,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e5",
+                "packageName": "8Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1800,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 6,
+                    "upload": 6,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d7",
+                "packageName": "6Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 1850,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 14,
+                    "upload": 14,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a0",
+                "packageName": "12Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 12,
+                    "upload": 12,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c7",
+                "packageName": "10Mbps_2k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 12,
+                    "upload": 12,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d1",
+                "packageName": "12Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 7,
+                    "upload": 7,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480dc",
+                "packageName": "7mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 24,
+                    "upload": 24,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c448102",
+                "packageName": "24Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a1",
+                "packageName": "20Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a6",
+                "packageName": "5Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 9,
+                    "upload": 9,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ad",
+                "packageName": "8Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d2",
+                "packageName": "20Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d6",
+                "packageName": "15Mbps@2500 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e9",
+                "packageName": "10Mbps_Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ea",
+                "packageName": "10Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f4",
+                "packageName": "15Mbps Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 32,
+                    "upload": 32,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ff",
+                "packageName": "32Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2599,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 8,
+                    "upload": 8,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480cb",
+                "packageName": "MobileWorld@2800 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 2800,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a2",
+                "packageName": "30Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 8,
+                    "upload": 8,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a7",
+                "packageName": "8Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b6",
+                "packageName": "George_Amol_3k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480be",
+                "packageName": "Janet_Mogire Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 12,
+                    "upload": 12,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c9",
+                "packageName": "Davtech@3k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d3",
+                "packageName": "30Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d8",
+                "packageName": "20Mbps@3k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e2",
+                "packageName": "15Mbps_Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ec",
+                "packageName": "Chalo@3k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f1",
+                "packageName": "Maryanne@3k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480aa",
+                "packageName": "10Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ac",
+                "packageName": "10Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b9",
+                "packageName": "Stephen_Kiragu Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480bd",
+                "packageName": "Brian_Okoth@3500/= Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c0",
+                "packageName": "Benson_Mwaura Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c2",
+                "packageName": "Entry_Package Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c8",
+                "packageName": "15Mbps@3500/= Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480da",
+                "packageName": "30Mbps_3500 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 35,
+                    "upload": 35,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e7",
+                "packageName": "35Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480eb",
+                "packageName": "County@3500/= Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480df",
+                "packageName": "Ruth@3850 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 3850,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 40,
+                    "upload": 40,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a4",
+                "packageName": "40Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 12,
+                    "upload": 12,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a8",
+                "packageName": "12Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ae",
+                "packageName": "20Mbps_4K Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ba",
+                "packageName": "Dakims_Package Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c5",
+                "packageName": "Homegates_4k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c6",
+                "packageName": "Tiktok_4k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 25,
+                    "upload": 25,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480cc",
+                "packageName": "25Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 5,
+                    "upload": 5,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480cd",
+                "packageName": "Monica_Njuguna4k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 40,
+                    "upload": 40,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d4",
+                "packageName": "40Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ee",
+                "packageName": "30Mbps_4k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a3",
+                "packageName": "30Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c4",
+                "packageName": "Seas_Motors_4500 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 12,
+                    "upload": 12,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480db",
+                "packageName": "Aldai_pri_W_4500 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 45,
+                    "upload": 45,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480fa",
+                "packageName": "45Mbps Plan Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 4500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a5",
+                "packageName": "15Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b2",
+                "packageName": "20Mbps_Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 13,
+                    "upload": 13,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480bf",
+                "packageName": "Farelian_Osoro Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 55,
+                    "upload": 55,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ca",
+                "packageName": "50Mbps Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 60,
+                    "upload": 60,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d5",
+                "packageName": "60Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 25,
+                    "upload": 25,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480de",
+                "packageName": "Twincat@5k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 50,
+                    "upload": 50,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e1",
+                "packageName": "Grebe_Package@5k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 40,
+                    "upload": 40,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ef",
+                "packageName": "40Mbps_5k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 25,
+                    "upload": 25,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f0",
+                "packageName": "25Mbps_Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f6",
+                "packageName": "Maritim@5k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f9",
+                "packageName": "Thananga_Plan Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 25,
+                    "upload": 25,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480fd",
+                "packageName": "Flame Safety Plan Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 65,
+                    "upload": 65,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c448103",
+                "packageName": "65Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ed",
+                "packageName": "ILRI_Package Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 5172,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480bc",
+                "packageName": "15Mbps_W_6k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 6000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e0",
+                "packageName": "30Mbps_Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 6000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 60,
+                    "upload": 60,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e6",
+                "packageName": "60Mbps Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 6000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e8",
+                "packageName": "Little_Friends@6k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 6000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 12,
+                    "upload": 12,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c448105",
+                "packageName": "Winnie_Package@6k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 6000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 100,
+                    "upload": 100,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c448104",
+                "packageName": "100Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 6900,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 10,
+                    "upload": 10,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480af",
+                "packageName": "10Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 7000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 15,
+                    "upload": 15,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b1",
+                "packageName": "15Mbps_W_7k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 7000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 40,
+                    "upload": 40,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b8",
+                "packageName": "Utugi_Package Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 7000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 80,
+                    "upload": 80,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480e4",
+                "packageName": "80Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 7000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 40,
+                    "upload": 40,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f8",
+                "packageName": "35Mbps Reseller Package Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 7000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c1",
+                "packageName": "Rafiki_Mwema Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 7500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 85,
+                    "upload": 85,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480c3",
+                "packageName": "Sergoek_80Mbps_8000 Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 8000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480d9",
+                "packageName": "Aldai_Girls Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 8000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 100,
+                    "upload": 100,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f2",
+                "packageName": "100Mbps Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 8000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 45,
+                    "upload": 45,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f7",
+                "packageName": "40Mbps Reseller Package Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 8000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 35,
+                    "upload": 35,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480b3",
+                "packageName": "30Mbps_9k Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 9000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 20,
+                    "upload": 20,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480cf",
+                "packageName": "George_Rono@9500/= Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 9500,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480bb",
+                "packageName": "30Mbps_HT Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 10000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 50,
+                    "upload": 50,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f5",
+                "packageName": "50Mbps Business Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 10000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 80,
+                    "upload": 80,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480f3",
+                "packageName": "Generation_K Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 11793,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 60,
+                    "upload": 60,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480dd",
+                "packageName": "Robert_K_60Mbps Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 12000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 30,
+                    "upload": 30,
+                    "burstSpeed": 0,
+                    "burstThreshold": 0,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480a9",
+                "packageName": "30Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 15000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            },
+            {
+                "speed": {
+                    "download": 62,
+                    "upload": 62,
+                    "burstSpeed": 100,
+                    "burstThreshold": 100,
+                    "burstTime": 0,
+                    "burstEnabled": false
+                },
+                "fup": {
+                    "enabled": false,
+                    "dataThresholdGB": 0,
+                    "throttleDownloadMbps": 1,
+                    "throttleUploadMbps": 1,
+                    "resetPeriod": "billingCycle"
+                },
+                "radiusAttributes": {
+                    "framedProtocol": "PPP"
+                },
+                "_id": "6a0e0ae8ab7871ff9c4480ce",
+                "packageName": "60Mbps_Wireless Rift",
+                "packageType": "ppp",
+                "regionCode": "SKN",
+                "siteId": {
+                    "_id": "6a0dc10237e5028eb51eac02",
+                    "name": "RIFT REGION",
+                    "regionCode": "SKN"
+                },
+                "price": 20000,
+                "period": 30,
+                "periodUnit": "d",
+                "dataLimit": 0,
+                "description": "",
+                "isActive": true,
+                "priority": 1
+            }
+        ]

@@ -8,14 +8,17 @@ const {
   updateHotspotUser,
   deleteHotspotUser,
   getHotspotStatus,
-  disconnectHotspotUser
+  disconnectHotspotUser,
+  getHotspotUserDetail,
+  getHotspotUserUsage,
+  getHotspotUserPayments,
+  getHotspotUsageSinceActivation
 } = require('../controllers/hotspotController');
 
-const { protect, authorize } = require('../middleware/auth');
+const { protect} = require('../middleware/auth');
 
 // All routes require admin authentication
 router.use(protect);
-router.use(authorize('admin', 'super_admin'));
 
 router.route('/')
   .get(getHotspotUsers)
@@ -28,5 +31,9 @@ router.route('/:id')
 
 router.get('/:id/status', getHotspotStatus);
 router.post('/:id/disconnect', disconnectHotspotUser);
+router.get('/:id/detail', getHotspotUser);
+router.get('/:id/usage', getHotspotUserUsage);
+router.get('/:id/payments', getHotspotUserPayments);
+router.get('/:id/usage-since-activation', getHotspotUsageSinceActivation);
 
 module.exports = router;

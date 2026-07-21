@@ -1,6 +1,7 @@
 const asyncHandler = require('../middleware/asyncHandler');
 const { ErrorResponse } = require('../middleware/errorHandler');
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const Role = require('../models/Role');
 const bcrypt = require('bcryptjs');
 const { formatPhoneNumber } = require('../utils/phoneHelpers');
@@ -395,5 +396,45 @@ exports.getUserMetrics = asyncHandler(async (req, res, next) => {
     success: true,
     message: 'User metrics retrieved successfully',
     data: user.metrics
+  });
+});
+
+
+
+// @desc    Change Admin's own password
+// @route   PUT /api/admins/change-password
+// @access  Private (Admin only)
+exports.changeAdminPassword = asyncHandler(async (req, res, next) => {
+  const { currentPassword, newPassword, id } = req.body;
+
+  if (!newPassword || newPassword.length < 8) {
+    return next(new ErrorResponse('New password must be at least 8 characters', 400));
+  }
+
+  console.log("ID: ", id)
+  // Get admin with password field (normally excluded)
+  const admin = await Admin.findById(req.user.id).select('+password');
+
+  if (!admin) {
+    return next(new ErrorResponse('Admin not found', 404));
+  }
+
+  // Compare current password
+  const isMatch = await bcrypt.compare(currentPassword, admin.password);
+  if (!isMatch) {
+    return next(new ErrorResponse('Current password is incorrect', 401));
+  }
+
+  // Hash new password
+  const salt = await bcrypt.genSalt(10);
+  admin.password = await bcrypt.hash(newPassword, salt);
+  admin.passwordChangedAt = Date.now();
+  admin.mustChangePassword = false;
+
+  await admin.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Admin password changed successfully',
   });
 });

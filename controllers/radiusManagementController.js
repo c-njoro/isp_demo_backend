@@ -12,67 +12,89 @@ const radiusService = require('../services/radiusService');
  * @access  Private (admin only)
  */
 exports.getUsers = asyncHandler(async (req, res, next) => {
-    const { search, group, hasMac } = req.query;
-    const connection = await radiusService.getConnection();
-    try {
-      // Get all radcheck entries (password only)
-      let usersQuery = `
-        SELECT username, attribute, value FROM radcheck WHERE attribute = 'Cleartext-Password'
-      `;
-      let groupQuery = `SELECT username, groupname FROM radusergroup`;
-      let macQuery = `SELECT username, value AS macAddress FROM radcheck WHERE attribute = 'Calling-Station-Id'`;
+  const {
+    search,
+    group,
+    hasMac,
+    page = 1,
+    limit = 50
+  } = req.query;
   
-      // No dynamic filtering on these base queries; we'll filter in JavaScript for simplicity
-      const [users] = await connection.query(usersQuery);
-      const [groups] = await connection.query(groupQuery);
-      const [macs] = await connection.query(macQuery);
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const connection = await radiusService.getConnection();
   
-      // Combine data
-      const userMap = {};
-      users.forEach(u => {
-        userMap[u.username] = {
-          username: u.username,
-          password: u.value,
-          group: null,
-          macAddress: null
-        };
-      });
-      groups.forEach(g => {
-        if (userMap[g.username]) userMap[g.username].group = g.groupname;
-      });
-      macs.forEach(m => {
-        if (userMap[m.username]) userMap[m.username].macAddress = m.macAddress;
-      });
-  
-      let results = Object.values(userMap);
-  
-      // Apply filters
-      if (search) {
-        const searchLower = search.toLowerCase();
-        results = results.filter(user =>
-          user.username.toLowerCase().includes(searchLower) ||
-          (user.group && user.group.toLowerCase().includes(searchLower)) ||
-          (user.macAddress && user.macAddress.toLowerCase().includes(searchLower))
-        );
-      }
-      if (group) {
-        results = results.filter(user => user.group === group);
-      }
-      if (hasMac === 'true') {
-        results = results.filter(user => user.macAddress);
-      } else if (hasMac === 'false') {
-        results = results.filter(user => !user.macAddress);
-      }
-  
-      res.json({ success: true, data: results });
-    } catch (error) {
-      console.error('Get RADIUS users error:', error);
-      return next(new ErrorResponse('Failed to fetch users', 500));
-    } finally {
-      connection.release();
+  try {
+    // Build dynamic WHERE clauses
+    let whereClause = "";
+    const params = [];
+    
+    if (search) {
+      whereClause += ` AND (u.username LIKE ? OR g.groupname LIKE ? OR m.macAddress LIKE ?)`;
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
     }
-  });
-
+    
+    if (group) {
+      whereClause += ` AND g.groupname = ?`;
+      params.push(group);
+    }
+    
+    if (hasMac === 'true') {
+      whereClause += ` AND m.macAddress IS NOT NULL`;
+    } else if (hasMac === 'false') {
+      whereClause += ` AND m.macAddress IS NULL`;
+    }
+    
+    // Count query (no changes needed)
+    const countQuery = `
+      SELECT COUNT(DISTINCT u.username) as total
+      FROM radcheck u
+      LEFT JOIN radusergroup g ON u.username = g.username
+      LEFT JOIN (
+        SELECT username, value as macAddress FROM radcheck WHERE attribute = 'Calling-Station-Id'
+      ) m ON u.username = m.username
+      WHERE u.attribute = 'Cleartext-Password' ${whereClause}
+    `;
+    const [countResult] = await connection.query(countQuery, params);
+    const total = countResult[0].total;
+    
+    // Data query – use ANY_VALUE to satisfy ONLY_FULL_GROUP_BY
+    const dataQuery = `
+      SELECT 
+        u.username,
+        ANY_VALUE(u.value) as password,
+        ANY_VALUE(g.groupname) as \`group\`,
+        ANY_VALUE(m.macAddress) as macAddress
+      FROM radcheck u
+      LEFT JOIN radusergroup g ON u.username = g.username
+      LEFT JOIN (
+        SELECT username, value as macAddress FROM radcheck WHERE attribute = 'Calling-Station-Id'
+      ) m ON u.username = m.username
+      WHERE u.attribute = 'Cleartext-Password' ${whereClause}
+      GROUP BY u.username
+      ORDER BY u.username
+      LIMIT ? OFFSET ?
+    `;
+    const dataParams = [...params, parseInt(limit), offset];
+    const [rows] = await connection.query(dataQuery, dataParams);
+    
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get RADIUS users error:', error);
+    return next(new ErrorResponse('Failed to fetch users', 500));
+  } finally {
+    connection.release();
+  }
+});
 /**
  * @desc    Get a single RADIUS user details
  * @route   GET /api/radius/users/:username
