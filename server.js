@@ -117,17 +117,16 @@ process.on('unhandledRejection', (err, promise) => {
 
     app.set('trust proxy', 1);
 
-    // Session configuration
     app.use(session({
-      secret: process.env.SESSION_SECRET, // no fallback – fail if missing
+      secret: process.env.SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
       store: store,
       cookie: {
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production',   // must be true for sameSite='none'
         httpOnly: true,
-        maxAge: 1000 * 60 * 60 * 24,   // 1 day
-        sameSite: 'lax',                // or 'strict' if you never want cross-site
+        maxAge: 1000 * 60 * 60 * 24,                     // 1 day
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         path: '/'
       },
       rolling: true
