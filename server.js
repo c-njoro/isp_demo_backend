@@ -64,6 +64,7 @@ process.on('unhandledRejection', (err, promise) => {
         const allowed = [
           process.env.BASE_URL,
           'http://localhost:3000',
+          'https://eazy-bill-demo.vercel.app'
         ];
       
         if (!origin || allowed.includes(origin) || /^https:\/\/[^.]+\.skylinknetworks\.co\.ke$/.test(origin)) {
