@@ -24,7 +24,6 @@ RUN npm run build
 # Copy FreeRADIUS config from your repo
 COPY ./freeradius/raddb/ /etc/freeradius/
 
-COPY ./mysql/isrgrootx1.pem /app/mysql/isrgrootx1.pem
 
 # Fix FreeRADIUS permissions
 RUN chown -R freerad:freerad /etc/freeradius \

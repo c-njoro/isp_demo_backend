@@ -2534,7 +2534,6 @@ class RadiusService {
       connectionLimit: 10,
       queueLimit: 0,
       ssl: {
-        ca: require('fs').readFileSync('/app/mysql/isrgrootx1.pem'),  // path to your cert
         rejectUnauthorized: true
       }
     };
