@@ -2,11 +2,11 @@ sql {
     driver = "rlm_sql_mysql"
     dialect = "mysql"
 
-    server = "${RADIUS_DB_HOST}"
-    port = 3306
-    login = "radius"
-    password = "${RADIUS_DB_PASSWORD}"
-    radius_db = "radius"
+    server = "127.0.0.1"
+	port = 3306
+	login = "radius"
+	password = "radius"
+	radius_db = "radius"
 
     accounting_table = "radacct"
     postauth_table = "radpostauth"

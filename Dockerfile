@@ -1,39 +1,42 @@
-# Builder stage
-FROM node:18-alpine AS builder
-WORKDIR /build
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
+FROM node:20-slim
 
-# Final stage
-FROM node:18-alpine
-
-RUN apk update && \
-    apk add --no-cache dumb-init bash curl openssl freeradius-utils shadow python3 py3-pip && \
-    rm -rf /var/cache/apk/*
-
-RUN pip3 install --no-cache-dir --break-system-packages netmiko
-
-RUN groupadd -g 987 skylink-app && \
-    useradd -u 999 -g 987 -s /bin/false -M skylink-app
+# Install MySQL + FreeRADIUS + curl (for healthchecks)
+RUN apt-get update && apt-get install -y \
+    mysql-server \
+    freeradius \
+    freeradius-mysql \
+    freeradius-utils \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY --from=builder /build/node_modules ./node_modules
-COPY --from=builder /build/dist ./dist
+# Copy and install Node dependencies
+COPY package*.json ./
+RUN npm ci --only=production
 
-COPY --from=builder --chown=skylink-app:skylink-app /build/services/olt/python /app/dist/python
+# Copy full app
+COPY . .
 
-COPY --from=builder /build/node_modules/pdfkit/js/data /app/dist/data
+# Build the app
+RUN npm run build
 
-# Copy static assets (PNG for PDFs)
-COPY --from=builder /build/public ./public
+# Copy FreeRADIUS config from your repo
+COPY ./freeradius/raddb/ /etc/freeradius/
 
-RUN chown -R skylink-app:skylink-app /app
+# Fix FreeRADIUS permissions
+RUN chown -R freerad:freerad /etc/freeradius \
+    && chmod 640 /etc/freeradius/mods-config/sql/main/mysql/queries.conf 2>/dev/null || true
 
+# Copy startup script
+COPY demo-start.sh /demo-start.sh
+RUN chmod +x /demo-start.sh
+
+# Expose app port (Render handles HTTP routing here)
 EXPOSE 5000
-ENTRYPOINT ["dumb-init", "--"]
-USER skylink-app
 
-CMD ["node", "dist/server.js"]
+# Healthcheck for Render
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+CMD ["/demo-start.sh"]
